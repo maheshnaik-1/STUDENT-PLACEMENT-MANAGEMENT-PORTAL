@@ -61,6 +61,23 @@ export const AuthProvider = ({ children }) => {
     throw new Error(res.message || 'Profile update failed');
   };
 
+  const updateResumeState = (newResumeFile) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        resumeFile: newResumeFile || {
+          filename: null,
+          originalName: null,
+          mimeType: null,
+          size: null,
+          path: null,
+          uploadedAt: null,
+        },
+      };
+    });
+  };
+
   const logout = () => {
     localStorage.removeItem('placement_auth_token');
     setToken(null);
@@ -69,6 +86,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    setUser,
     token,
     loading,
     isAuthenticated: !!user,
@@ -77,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     updateProfile,
+    updateResumeState,
     logout,
   };
 

@@ -18,8 +18,10 @@ async function request(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
   const token = getToken();
 
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers || {}),
   };
 
@@ -69,6 +71,27 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(profileData),
       }),
+    uploadResume: (formData) =>
+      request('/auth/resume-upload', {
+        method: 'POST',
+        body: formData,
+      }),
+    deleteResume: () =>
+      request('/auth/resume', {
+        method: 'DELETE',
+      }),
+    downloadResume: async (studentId) => {
+      const token = getToken();
+      const endpoint = studentId ? `/auth/resume-download/${studentId}` : '/auth/resume';
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to download resume file');
+      }
+      return await response.blob();
+    },
   },
 
   // Company APIs

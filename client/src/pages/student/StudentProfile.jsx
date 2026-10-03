@@ -1,23 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
+import { api } from '../../services/api';
 import {
-  User,
   GraduationCap,
   FileText,
-  Phone,
-  Mail,
-  Award,
   Save,
-  CheckCircle2,
   ExternalLink,
+  Upload,
+  Trash2,
+  Download,
+  FileCheck,
+  AlertCircle,
 } from 'lucide-react';
 
 const BRANCHES = ['CSE', 'IT', 'ECE', 'EEE', 'MECH', 'CIVIL', 'AI&DS'];
 
 const StudentProfile = () => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, updateResumeState } = useAuth();
   const { showSuccess, showError } = useNotification();
+
+  const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -34,6 +37,10 @@ const StudentProfile = () => {
   });
 
   const [saving, setSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -56,6 +63,111 @@ const StudentProfile = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Upload Resume handler
+  const handleUploadResume = async (e) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      showError('Please select a resume file (PDF, DOC, DOCX up to 5MB).');
+      return;
+    }
+
+    const allowedExtensions = ['.pdf', '.doc', '.docx'];
+    const ext = '.' + selectedFile.name.split('.').pop().toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      showError('Invalid file format. Only PDF (.pdf), DOC (.doc), and DOCX (.docx) documents are supported.');
+      return;
+    }
+
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      showError('File size exceeds the 5MB limit. Please upload a file smaller than 5MB.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uploadData = new FormData();
+      uploadData.append('resume', selectedFile);
+
+      const res = await api.auth.uploadResume(uploadData);
+      if (res.success && res.resumeFile) {
+        if (updateResumeState) {
+          updateResumeState(res.resumeFile);
+        }
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        showSuccess('Resume uploaded successfully!');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to upload resume file.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Download Resume handler
+  const handleDownloadResume = async () => {
+    setDownloading(true);
+    try {
+      const blob = await api.auth.downloadResume();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = user?.resumeFile?.originalName || 'Resume.pdf';
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(link);
+      showSuccess('Resume downloaded successfully.');
+    } catch (err) {
+      showError(err.message || 'Failed to download resume file.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Delete Resume handler
+  const handleDeleteResume = async () => {
+    if (!window.confirm('Are you sure you want to delete your uploaded resume?')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await api.auth.deleteResume();
+      if (res.success) {
+        if (updateResumeState) {
+          updateResumeState(null);
+        }
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        showSuccess('Uploaded resume deleted successfully.');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to delete resume.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -87,13 +199,15 @@ const StudentProfile = () => {
     }
   };
 
+  const hasUploadedResume = Boolean(user?.resumeFile && user.resumeFile.filename);
+
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
       <div className="page-header">
         <div>
           <h1 className="page-title">Student Profile & Academic Record</h1>
           <p className="page-subtitle">
-            Ensure your academic details and CGPA are up to date for placement eligibility
+            Ensure your academic details, CGPA, and resume are up to date for placement eligibility
           </p>
         </div>
       </div>
@@ -231,7 +345,215 @@ const StudentProfile = () => {
               </div>
             </div>
 
-            {/* Contact & Portfolio */}
+            {/* Resume & Portfolio Section */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                margin: '1.5rem 0',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  marginBottom: '1rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <FileText size={18} color="#2563eb" />
+                Resume Management
+              </h4>
+
+              {/* Uploaded Resume Area */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
+                  Uploaded Resume (Server File)
+                </label>
+
+                {hasUploadedResume ? (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div
+                        style={{
+                          background: '#eff6ff',
+                          color: '#2563eb',
+                          padding: '0.6rem',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <FileCheck size={24} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.95rem' }}>
+                          {user.resumeFile.originalName || user.resumeFile.filename}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.8rem',
+                            color: '#64748b',
+                            display: 'flex',
+                            gap: '0.75rem',
+                            marginTop: '0.2rem',
+                          }}
+                        >
+                          <span>{formatFileSize(user.resumeFile.size)}</span>
+                          <span>•</span>
+                          <span>
+                            {user.resumeFile.uploadedAt
+                              ? `Uploaded ${new Date(user.resumeFile.uploadedAt).toLocaleDateString()}`
+                              : 'Uploaded'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={handleDownloadResume}
+                        disabled={downloading}
+                        className="btn btn-secondary btn-sm"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Download size={15} />
+                        <span>{downloading ? 'Downloading...' : 'Download'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteResume}
+                        disabled={deleting}
+                        className="btn btn-sm"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          background: '#fee2e2',
+                          color: '#b91c1c',
+                          border: '1px solid #fca5a5',
+                        }}
+                      >
+                        <Trash2 size={15} />
+                        <span>{deleting ? 'Deleting...' : 'Delete'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px dashed #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
+                      <AlertCircle size={16} color="#94a3b8" />
+                      <span>No uploaded resume on file. Upload a document below.</span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        onChange={handleFileChange}
+                        disabled={uploading}
+                        style={{
+                          fontSize: '0.875rem',
+                          color: '#334155',
+                          flex: '1',
+                          minWidth: '220px',
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleUploadResume}
+                        disabled={uploading || !selectedFile}
+                        className="btn btn-primary btn-sm"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Upload size={16} />
+                        <span>{uploading ? 'Uploading...' : 'Upload Resume'}</span>
+                      </button>
+                    </div>
+
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Accepted formats: <strong>PDF, DOC, DOCX</strong> • Maximum <strong>5 MB</strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* External Resume Link Area */}
+              <div>
+                <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>
+                  External Resume Link (Drive / Portfolio)
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="url"
+                    name="resumeUrl"
+                    className="form-control"
+                    placeholder="https://drive.google.com/... / external resume URL"
+                    value={formData.resumeUrl}
+                    onChange={handleChange}
+                  />
+                  {formData.resumeUrl && (
+                    <a
+                      href={formData.resumeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-secondary btn-sm"
+                      title="Open External Resume Link"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                    >
+                      <ExternalLink size={16} />
+                      <span style={{ fontSize: '0.8rem' }}>Visit</span>
+                    </a>
+                  )}
+                </div>
+                <div className="form-help">
+                  You can keep both an uploaded resume file and an external portfolio link.
+                </div>
+              </div>
+            </div>
+
+            {/* Contact & Skills */}
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Phone Number</label>
@@ -246,41 +568,16 @@ const StudentProfile = () => {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Resume Link / Portfolio URL</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input
-                    type="url"
-                    name="resumeUrl"
-                    className="form-control"
-                    placeholder="https://drive.google.com/... / resume"
-                    value={formData.resumeUrl}
-                    onChange={handleChange}
-                  />
-                  {formData.resumeUrl && (
-                    <a
-                      href={formData.resumeUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn btn-secondary btn-sm"
-                      title="Preview Resume Link"
-                    >
-                      <ExternalLink size={16} />
-                    </a>
-                  )}
-                </div>
+                <label className="form-label">Technical Skills (Comma-separated)</label>
+                <input
+                  type="text"
+                  name="skills"
+                  className="form-control"
+                  placeholder="React, Node.js, Python, MongoDB, AWS, Data Structures"
+                  value={formData.skills}
+                  onChange={handleChange}
+                />
               </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Technical Skills (Comma-separated)</label>
-              <input
-                type="text"
-                name="skills"
-                className="form-control"
-                placeholder="React, Node.js, Python, MongoDB, AWS, Data Structures"
-                value={formData.skills}
-                onChange={handleChange}
-              />
             </div>
 
             <div className="form-group">
