@@ -98,6 +98,10 @@ const register = async (req, res, next) => {
         phone: user.phone,
         skills: user.skills,
         resumeUrl: user.resumeUrl,
+        academicDetails: user.academicDetails || {},
+        links: user.links || {},
+        projects: user.projects || [],
+        certifications: user.certifications || [],
       },
     });
   } catch (error) {
@@ -167,10 +171,29 @@ const login = async (req, res, next) => {
         phone: user.phone,
         skills: user.skills,
         resumeUrl: user.resumeUrl,
+        academicDetails: user.academicDetails || {},
+        links: user.links || {},
+        projects: user.projects || [],
+        certifications: user.certifications || [],
       },
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * Helper function to validate HTTP/HTTPS URLs
+ */
+const isValidUrl = (string) => {
+  if (!string || typeof string !== 'string') return true;
+  const trimmed = string.trim();
+  if (trimmed === '') return true;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
   }
 };
 
@@ -207,12 +230,20 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
-    // Allowed update fields
+    // Allowed basic update fields
     if (req.body.name) user.name = req.body.name;
     if (req.body.phone !== undefined) user.phone = req.body.phone;
-    if (req.body.resumeUrl !== undefined) user.resumeUrl = req.body.resumeUrl;
+    if (req.body.resumeUrl !== undefined) {
+      if (!isValidUrl(req.body.resumeUrl)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide a valid resume URL (e.g., https://...)',
+        });
+      }
+      user.resumeUrl = req.body.resumeUrl.trim();
+    }
 
-    // Student academic details
+    // Student specific academic details and v2.1.1 extended profile
     if (user.role === 'student') {
       if (req.body.branch) user.branch = req.body.branch;
       if (req.body.cgpa !== undefined) user.cgpa = Number(req.body.cgpa);
@@ -220,6 +251,7 @@ const updateProfile = async (req, res, next) => {
         user.activeBacklogs = Number(req.body.activeBacklogs);
       if (req.body.passingYear !== undefined)
         user.passingYear = Number(req.body.passingYear);
+
       if (req.body.skills !== undefined) {
         if (Array.isArray(req.body.skills)) {
           user.skills = req.body.skills;
@@ -229,6 +261,170 @@ const updateProfile = async (req, res, next) => {
             .map((s) => s.trim())
             .filter(Boolean);
         }
+      }
+
+      // v2.1.1 Academic Details Validation & Update
+      if (req.body.academicDetails && typeof req.body.academicDetails === 'object') {
+        const ad = req.body.academicDetails;
+        user.academicDetails = user.academicDetails || {};
+
+        if (ad.tenthPercentage !== undefined) {
+          const val = ad.tenthPercentage === null || ad.tenthPercentage === '' ? null : Number(ad.tenthPercentage);
+          if (val !== null && (isNaN(val) || val < 0 || val > 100)) {
+            return res.status(400).json({
+              success: false,
+              message: '10th percentage must be a number between 0 and 100',
+            });
+          }
+          user.academicDetails.tenthPercentage = val;
+        }
+
+        if (ad.twelfthPercentage !== undefined) {
+          const val = ad.twelfthPercentage === null || ad.twelfthPercentage === '' ? null : Number(ad.twelfthPercentage);
+          if (val !== null && (isNaN(val) || val < 0 || val > 100)) {
+            return res.status(400).json({
+              success: false,
+              message: '12th percentage must be a number between 0 and 100',
+            });
+          }
+          user.academicDetails.twelfthPercentage = val;
+        }
+
+        if (ad.diplomaPercentage !== undefined) {
+          const val = ad.diplomaPercentage === null || ad.diplomaPercentage === '' ? null : Number(ad.diplomaPercentage);
+          if (val !== null && (isNaN(val) || val < 0 || val > 100)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Diploma percentage must be a number between 0 and 100',
+            });
+          }
+          user.academicDetails.diplomaPercentage = val;
+        }
+
+        if (ad.currentSemester !== undefined) {
+          const val = ad.currentSemester === null || ad.currentSemester === '' ? null : Number(ad.currentSemester);
+          if (val !== null && (isNaN(val) || !Number.isInteger(val) || val < 1 || val > 12)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Current semester must be an integer between 1 and 12',
+            });
+          }
+          user.academicDetails.currentSemester = val;
+        }
+
+        if (ad.gapYears !== undefined) {
+          const val = Number(ad.gapYears);
+          if (isNaN(val) || val < 0) {
+            return res.status(400).json({
+              success: false,
+              message: 'Gap years must be a non-negative number',
+            });
+          }
+          user.academicDetails.gapYears = val;
+        }
+      }
+
+      // v2.1.1 Social / Portfolio Links Validation & Update
+      if (req.body.links && typeof req.body.links === 'object') {
+        const l = req.body.links;
+        user.links = user.links || {};
+
+        if (l.github !== undefined) {
+          if (!isValidUrl(l.github)) {
+            return res.status(400).json({
+              success: false,
+              message: 'GitHub link must be a valid URL format (e.g. https://github.com/...)',
+            });
+          }
+          user.links.github = (l.github || '').trim();
+        }
+
+        if (l.linkedin !== undefined) {
+          if (!isValidUrl(l.linkedin)) {
+            return res.status(400).json({
+              success: false,
+              message: 'LinkedIn link must be a valid URL format (e.g. https://linkedin.com/...)',
+            });
+          }
+          user.links.linkedin = (l.linkedin || '').trim();
+        }
+
+        if (l.portfolio !== undefined) {
+          if (!isValidUrl(l.portfolio)) {
+            return res.status(400).json({
+              success: false,
+              message: 'Portfolio link must be a valid URL format (e.g. https://...)',
+            });
+          }
+          user.links.portfolio = (l.portfolio || '').trim();
+        }
+      }
+
+      // v2.1.1 Projects Validation & Update
+      if (req.body.projects !== undefined) {
+        if (!Array.isArray(req.body.projects)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Projects must be an array of project items',
+          });
+        }
+
+        const formattedProjects = [];
+        for (const proj of req.body.projects) {
+          if (typeof proj === 'object' && proj !== null) {
+            if (proj.link && !isValidUrl(proj.link)) {
+              return res.status(400).json({
+                success: false,
+                message: `Invalid project URL format for project "${proj.title || 'Untitled'}"`,
+              });
+            }
+
+            let stack = [];
+            if (Array.isArray(proj.techStack)) {
+              stack = proj.techStack;
+            } else if (typeof proj.techStack === 'string') {
+              stack = proj.techStack.split(',').map((s) => s.trim()).filter(Boolean);
+            }
+
+            formattedProjects.push({
+              title: (proj.title || '').trim(),
+              description: (proj.description || '').trim(),
+              techStack: stack,
+              link: (proj.link || '').trim(),
+            });
+          }
+        }
+        user.projects = formattedProjects;
+      }
+
+      // v2.1.1 Certifications Validation & Update
+      if (req.body.certifications !== undefined) {
+        if (!Array.isArray(req.body.certifications)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Certifications must be an array of certification items',
+          });
+        }
+
+        const formattedCerts = [];
+        for (const cert of req.body.certifications) {
+          if (typeof cert === 'object' && cert !== null) {
+            if (cert.certificateUrl && !isValidUrl(cert.certificateUrl)) {
+              return res.status(400).json({
+                success: false,
+                message: `Invalid certificate URL format for "${cert.name || 'Untitled'}"`,
+              });
+            }
+
+            formattedCerts.push({
+              name: (cert.name || '').trim(),
+              issuer: (cert.issuer || '').trim(),
+              issueDate: (cert.issueDate || '').trim(),
+              certificateUrl: (cert.certificateUrl || '').trim(),
+            });
+          }
+        }
+        user.certifications = formattedCerts;
       }
     }
 

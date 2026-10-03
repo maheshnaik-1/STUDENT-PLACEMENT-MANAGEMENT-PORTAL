@@ -71,6 +71,71 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // v2.1.1 Additive Profile Foundation Fields
+    academicDetails: {
+      tenthPercentage: {
+        type: Number,
+        min: [0, '10th percentage cannot be negative'],
+        max: [100, '10th percentage cannot exceed 100%'],
+        default: null,
+      },
+      twelfthPercentage: {
+        type: Number,
+        min: [0, '12th percentage cannot be negative'],
+        max: [100, '12th percentage cannot exceed 100%'],
+        default: null,
+      },
+      diplomaPercentage: {
+        type: Number,
+        min: [0, 'Diploma percentage cannot be negative'],
+        max: [100, 'Diploma percentage cannot exceed 100%'],
+        default: null,
+      },
+      currentSemester: {
+        type: Number,
+        min: [1, 'Semester must be at least 1'],
+        max: [12, 'Semester cannot exceed 12'],
+        default: null,
+      },
+      gapYears: {
+        type: Number,
+        min: [0, 'Gap years cannot be negative'],
+        default: 0,
+      },
+    },
+    links: {
+      github: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+      linkedin: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+      portfolio: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+    },
+    projects: [
+      {
+        title: { type: String, trim: true, default: '' },
+        description: { type: String, trim: true, default: '' },
+        techStack: { type: [String], default: [] },
+        link: { type: String, trim: true, default: '' },
+      },
+    ],
+    certifications: [
+      {
+        name: { type: String, trim: true, default: '' },
+        issuer: { type: String, trim: true, default: '' },
+        issueDate: { type: String, trim: true, default: '' },
+        certificateUrl: { type: String, trim: true, default: '' },
+      },
+    ],
   },
   {
     timestamps: true,
