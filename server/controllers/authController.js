@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -98,6 +100,7 @@ const register = async (req, res, next) => {
         phone: user.phone,
         skills: user.skills,
         resumeUrl: user.resumeUrl,
+        resumeFile: user.resumeFile || {},
         academicDetails: user.academicDetails || {},
         links: user.links || {},
         projects: user.projects || [],
@@ -171,6 +174,7 @@ const login = async (req, res, next) => {
         phone: user.phone,
         skills: user.skills,
         resumeUrl: user.resumeUrl,
+        resumeFile: user.resumeFile || {},
         academicDetails: user.academicDetails || {},
         links: user.links || {},
         projects: user.projects || [],
@@ -445,9 +449,191 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Upload student resume file (PDF, DOC, DOCX up to 5MB)
+ * @route   POST /api/auth/resume-upload
+ * @access  Private (Student only / Authenticated user)
+ */
+const uploadResume = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a resume file to upload (PDF, DOC, DOCX up to 5MB)',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Keep track of old file to remove only AFTER successful database update
+    const oldFilename = user.resumeFile && user.resumeFile.filename;
+
+    // Update resumeFile metadata
+    user.resumeFile = {
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      uploadedAt: new Date(),
+    };
+
+    await user.save();
+
+    // Safely remove old physical file from disk if it was replaced with a new one
+    if (oldFilename && oldFilename !== req.file.filename) {
+      const resumesDir = path.resolve(__dirname, '../uploads/resumes');
+      const oldFilePath = path.join(resumesDir, path.basename(oldFilename));
+      if (oldFilePath.startsWith(resumesDir) && fs.existsSync(oldFilePath)) {
+        try {
+          fs.unlinkSync(oldFilePath);
+        } catch (unlinkErr) {
+          console.error('[Resume Upload] Warning removing old resume file:', unlinkErr.message);
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Resume uploaded successfully!',
+      resumeFile: user.resumeFile,
+    });
+  } catch (error) {
+    // If saving to DB fails, clean up the newly uploaded file to avoid orphans
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanErr) {
+        console.error('[Resume Upload] Error cleaning orphaned file:', cleanErr.message);
+      }
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete student uploaded resume file
+ * @route   DELETE /api/auth/resume
+ * @access  Private (Authenticated user)
+ */
+const deleteResume = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // If an uploaded resume file exists on disk, remove it safely
+    if (user.resumeFile && user.resumeFile.filename) {
+      const resumesDir = path.resolve(__dirname, '../uploads/resumes');
+      const safeFilename = path.basename(user.resumeFile.filename);
+      const filePath = path.join(resumesDir, safeFilename);
+
+      if (filePath.startsWith(resumesDir) && fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (unlinkErr) {
+          console.error('[Resume Delete] Warning removing file from disk:', unlinkErr.message);
+        }
+      }
+    }
+
+    // Reset resumeFile metadata safely (leaves resumeUrl untouched)
+    user.resumeFile = {
+      filename: null,
+      originalName: null,
+      mimeType: null,
+      size: null,
+      path: null,
+      uploadedAt: null,
+    };
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Uploaded resume removed successfully',
+      resumeFile: user.resumeFile,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Download / view student uploaded resume file with authorization & path-traversal protection
+ * @route   GET /api/auth/resume (for logged in user) OR GET /api/auth/resume-download/:studentId
+ * @access  Private (Student for self, Placement Officer for any student)
+ */
+const getResumeFile = async (req, res, next) => {
+  try {
+    const targetUserId = req.params.studentId || req.user._id;
+
+    // Student can only access their own resume; Officer can access any student's resume
+    if (req.user.role === 'student' && req.user._id.toString() !== targetUserId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this resume',
+      });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found',
+      });
+    }
+
+    if (!targetUser.resumeFile || !targetUser.resumeFile.filename) {
+      return res.status(404).json({
+        success: false,
+        message: 'No uploaded resume found for this student',
+      });
+    }
+
+    // Strict path traversal prevention: resolve strictly within uploads/resumes directory
+    const resumesDir = path.resolve(__dirname, '../uploads/resumes');
+    const safeFilename = path.basename(targetUser.resumeFile.filename);
+    const filePath = path.join(resumesDir, safeFilename);
+
+    if (!filePath.startsWith(resumesDir) || !fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume file not found on server disk',
+      });
+    }
+
+    // Set secure response headers for streaming/download
+    res.setHeader('Content-Type', targetUser.resumeFile.mimeType || 'application/octet-stream');
+    const originalName = targetUser.resumeFile.originalName || safeFilename;
+    const encodedName = encodeURIComponent(originalName);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${originalName}"; filename*=UTF-8''${encodedName}`
+    );
+
+    return res.sendFile(filePath);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   getMe,
   updateProfile,
+  uploadResume,
+  deleteResume,
+  getResumeFile,
 };

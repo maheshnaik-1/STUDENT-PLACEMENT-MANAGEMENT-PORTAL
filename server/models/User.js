@@ -71,6 +71,15 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // v2.1.2-A Additive Uploaded Resume File Metadata
+    resumeFile: {
+      filename: { type: String, default: null },
+      originalName: { type: String, default: null },
+      mimeType: { type: String, default: null },
+      size: { type: Number, default: null },
+      path: { type: String, default: null },
+      uploadedAt: { type: Date, default: null },
+    },
     // v2.1.1 Additive Profile Foundation Fields
     academicDetails: {
       tenthPercentage: {
