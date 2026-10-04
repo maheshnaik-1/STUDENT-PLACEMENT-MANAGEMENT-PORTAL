@@ -29,11 +29,11 @@ const Footer = () => {
           <span style={{ fontWeight: 700, color: '#1e293b' }}>
             Student Placement Management Portal
           </span>
-          <span>• B.Tech CSE Mini Project</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <span>Department of Training & Placement</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span>Training & Placement Cell</span>
+          <span>•</span>
           <span>© {new Date().getFullYear()}</span>
         </div>
       </div>

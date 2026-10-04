@@ -222,7 +222,7 @@ const Login = () => {
             </button>
           </form>
 
-          {/* Quick Demo Credentials Autofill */}
+          {/* Quick Sign-In Accounts Autofill */}
           <div
             style={{
               marginTop: '1.75rem',
@@ -246,7 +246,7 @@ const Login = () => {
               }}
             >
               <Zap size={14} color="#f59e0b" />
-              <span>One-Click Demo Fillers (Viva Ready):</span>
+              <span>Quick Sign-In Accounts:</span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

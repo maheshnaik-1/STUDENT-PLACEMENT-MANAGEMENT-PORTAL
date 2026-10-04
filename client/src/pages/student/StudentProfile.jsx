@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { api } from '../../services/api';
+import Modal from '../../components/common/Modal';
 import {
   GraduationCap,
   FileText,
@@ -12,6 +13,8 @@ import {
   Download,
   FileCheck,
   AlertCircle,
+  Eye,
+  Loader2,
 } from 'lucide-react';
 
 const BRANCHES = ['CSE', 'IT', 'ECE', 'EEE', 'MECH', 'CIVIL', 'AI&DS'];
@@ -42,6 +45,12 @@ const StudentProfile = () => {
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // PDF Preview Modal States
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+
   useEffect(() => {
     if (user) {
       setFormData({
@@ -59,6 +68,15 @@ const StudentProfile = () => {
       });
     }
   }, [user]);
+
+  // Clean up object URL when component unmounts or blob changes
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrl) {
+        window.URL.revokeObjectURL(previewBlobUrl);
+      }
+    };
+  }, [previewBlobUrl]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -136,7 +154,7 @@ const StudentProfile = () => {
       link.click();
       window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(link);
-      showSuccess('Resume downloaded successfully.');
+      showSuccess('Resume download started.');
     } catch (err) {
       showError(err.message || 'Failed to download resume file.');
     } finally {
@@ -161,6 +179,8 @@ const StudentProfile = () => {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+        // If preview modal was open, close it
+        handleClosePreview();
         showSuccess('Uploaded resume deleted successfully.');
       }
     } catch (err) {
@@ -168,6 +188,41 @@ const StudentProfile = () => {
     } finally {
       setDeleting(false);
     }
+  };
+
+  // Open PDF Preview Handler
+  const handleOpenPreview = async () => {
+    setPreviewModalOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    // Revoke previous blob if any
+    if (previewBlobUrl) {
+      window.URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+
+    try {
+      const blob = await api.auth.downloadResume();
+      const url = window.URL.createObjectURL(blob);
+      setPreviewBlobUrl(url);
+    } catch (err) {
+      console.error('Failed to load PDF preview:', err);
+      setPreviewError(err.message || 'Unable to load PDF document for preview.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Close PDF Preview Handler
+  const handleClosePreview = () => {
+    if (previewBlobUrl) {
+      window.URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+    setPreviewModalOpen(false);
+    setPreviewLoading(false);
+    setPreviewError(null);
   };
 
   const handleSubmit = async (e) => {
@@ -200,6 +255,13 @@ const StudentProfile = () => {
   };
 
   const hasUploadedResume = Boolean(user?.resumeFile && user.resumeFile.filename);
+  const isPdf =
+    Boolean(
+      user?.resumeFile &&
+        (user.resumeFile.mimeType === 'application/pdf' ||
+          (user.resumeFile.filename || '').toLowerCase().endsWith('.pdf') ||
+          (user.resumeFile.originalName || '').toLowerCase().endsWith('.pdf'))
+    );
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -426,11 +488,35 @@ const StudentProfile = () => {
                               ? `Uploaded ${new Date(user.resumeFile.uploadedAt).toLocaleDateString()}`
                               : 'Uploaded'}
                           </span>
+                          {!isPdf && (
+                            <span style={{ color: '#6366f1', fontWeight: 500 }}>
+                              (DOC/DOCX • Download only)
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {isPdf && (
+                        <button
+                          type="button"
+                          onClick={handleOpenPreview}
+                          className="btn btn-secondary btn-sm"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: '#eff6ff',
+                            color: '#1d4ed8',
+                            borderColor: '#bfdbfe',
+                          }}
+                        >
+                          <Eye size={15} />
+                          <span>Preview</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={handleDownloadResume}
@@ -513,7 +599,7 @@ const StudentProfile = () => {
                     </div>
 
                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      Accepted formats: <strong>PDF, DOC, DOCX</strong> • Maximum <strong>5 MB</strong>
+                      Accepted formats: <strong>PDF, DOC, DOCX</strong> • Maximum <strong>5 MB</strong> (PDF supports in-browser preview)
                     </div>
                   </div>
                 )}
@@ -606,6 +692,114 @@ const StudentProfile = () => {
           </form>
         </div>
       </div>
+
+      {/* PDF Resume Preview Modal */}
+      <Modal
+        isOpen={previewModalOpen}
+        onClose={handleClosePreview}
+        title={`Resume Preview — ${user?.resumeFile?.originalName || user?.resumeFile?.filename || 'Resume.pdf'}`}
+        maxWidth="880px"
+      >
+        <div>
+          {previewLoading && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4rem 2rem',
+                color: '#2563eb',
+                gap: '1rem',
+              }}
+            >
+              <Loader2 size={36} className="spin" />
+              <div style={{ fontWeight: 600, color: '#475569' }}>
+                Fetching authenticated PDF preview...
+              </div>
+            </div>
+          )}
+
+          {previewError && !previewLoading && (
+            <div
+              style={{
+                padding: '2rem',
+                textAlign: 'center',
+                background: '#fef2f2',
+                borderRadius: '8px',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+              }}
+            >
+              <AlertCircle size={36} style={{ margin: '0 auto 1rem', color: '#dc2626' }} />
+              <h4 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                Preview Not Available
+              </h4>
+              <p style={{ fontSize: '0.875rem', marginBottom: '1.25rem', color: '#7f1d1d' }}>
+                {previewError}
+              </p>
+              <button
+                type="button"
+                onClick={handleDownloadResume}
+                className="btn btn-primary btn-sm"
+                style={{ margin: '0 auto' }}
+              >
+                <Download size={16} />
+                <span>Download Resume File Instead</span>
+              </button>
+            </div>
+          )}
+
+          {previewBlobUrl && !previewLoading && !previewError && (
+            <div>
+              <iframe
+                src={previewBlobUrl}
+                title="PDF Resume Preview"
+                style={{
+                  width: '100%',
+                  height: '70vh',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  background: '#f8fafc',
+                }}
+              />
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: '1rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #f1f5f9',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Viewing authenticated PDF resume stream.
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleDownloadResume}
+                    className="btn btn-primary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Download size={15} />
+                    <span>Download PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClosePreview}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Close Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

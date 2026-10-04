@@ -179,7 +179,7 @@ const Home = () => {
             )}
           </div>
 
-          {/* Quick 1-Click Demo Section */}
+          {/* Quick Instant Access Section */}
           {!isAuthenticated && (
             <div
               style={{
@@ -195,7 +195,7 @@ const Home = () => {
               }}
             >
               <span style={{ color: '#bfdbfe', fontWeight: 600 }}>
-                ⚡ Quick 1-Click Viva Demo:
+                ⚡ Quick Portal Access:
               </span>
               <button
                 type="button"
@@ -210,7 +210,7 @@ const Home = () => {
                   cursor: 'pointer',
                 }}
               >
-                Demo Student (Rahul, CSE)
+                Student Portal (Rahul, CSE)
               </button>
               <button
                 type="button"
@@ -225,7 +225,7 @@ const Home = () => {
                   cursor: 'pointer',
                 }}
               >
-                Demo Placement Officer (Dr. Sharma)
+                Placement Officer Portal (Dr. Sharma)
               </button>
             </div>
           )}
@@ -284,7 +284,7 @@ const Home = () => {
             Engineered for Seamless Campus Hiring
           </h2>
           <p style={{ color: '#64748b', fontSize: '1rem', marginTop: '0.5rem' }}>
-            Built strictly adhering to college recruitment requirements and faculty evaluation standards.
+            Comprehensive recruitment workflow connecting students, placement cells, and hiring partners.
           </p>
         </div>
 
@@ -366,49 +366,6 @@ const Home = () => {
               Dedicated dashboard for the Training & Placement Officer to create drives, manage company profiles, filter candidates, and download comprehensive hiring reports.
             </p>
           </div>
-        </div>
-      </section>
-
-      {/* Top Recruiting Partners Showcase */}
-      <section
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '20px',
-          padding: '2.5rem 2rem',
-          textAlign: 'center',
-        }}
-      >
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#334155', marginBottom: '1.5rem' }}>
-          Our Premier Recruiting Partners
-        </h3>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '2.5rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          {['Google India', 'Microsoft IDC', 'Amazon India', 'Cisco Systems', 'Deloitte', 'TCS'].map(
-            (comp, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: '1.1rem',
-                  fontWeight: 700,
-                  color: '#475569',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  padding: '0.65rem 1.25rem',
-                  borderRadius: '10px',
-                }}
-              >
-                {comp}
-              </div>
-            )
-          )}
         </div>
       </section>
     </div>
