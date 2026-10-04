@@ -20,6 +20,9 @@ import {
   Calendar,
   CheckCircle,
   Eye,
+  FileText,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -31,6 +34,28 @@ const STATUS_FILTERS = [
   'Selected',
   'Rejected',
 ];
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+const isStudentPdf = (student) => {
+  const rf = student?.resumeFile;
+  if (!rf || !rf.filename) return false;
+  return Boolean(
+    rf.mimeType === 'application/pdf' ||
+      (rf.filename || '').toLowerCase().endsWith('.pdf') ||
+      (rf.originalName || '').toLowerCase().endsWith('.pdf')
+  );
+};
+
+const hasUploadedResume = (student) => {
+  return Boolean(student?.resumeFile && student.resumeFile.filename);
+};
 
 const DriveApplicants = () => {
   const { driveId } = useParams();
@@ -45,6 +70,14 @@ const DriveApplicants = () => {
   const [selectedAppForStatus, setSelectedAppForStatus] = useState(null);
   const [selectedStudentForView, setSelectedStudentForView] = useState(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Resume Preview State for Officer
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+  const [previewStudent, setPreviewStudent] = useState(null);
+  const [downloadingStudentId, setDownloadingStudentId] = useState(null);
 
   const fetchApplicants = async () => {
     try {
@@ -139,6 +172,78 @@ const DriveApplicants = () => {
     document.body.removeChild(link);
     showSuccess('Applicant roster exported to CSV successfully!');
   };
+
+  // Open PDF Preview Modal
+  const handleOpenPreview = async (student) => {
+    if (!student?._id) return;
+    setPreviewStudent(student);
+    setPreviewModalOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    // Revoke previous blob if any
+    if (previewBlobUrl) {
+      window.URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+
+    try {
+      const blob = await api.auth.downloadResume(student._id);
+      const url = window.URL.createObjectURL(blob);
+      setPreviewBlobUrl(url);
+    } catch (err) {
+      console.error('Failed to load candidate PDF preview:', err);
+      setPreviewError(err.message || 'Unable to load PDF document for preview.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Close PDF Preview Modal
+  const handleClosePreview = () => {
+    if (previewBlobUrl) {
+      window.URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+    setPreviewModalOpen(false);
+    setPreviewLoading(false);
+    setPreviewError(null);
+    setPreviewStudent(null);
+  };
+
+  // Download Resume
+  const handleDownloadResume = async (student) => {
+    if (!student?._id) return;
+    try {
+      setDownloadingStudentId(student._id);
+      const blob = await api.auth.downloadResume(student._id);
+      const filename =
+        student.resumeFile?.originalName ||
+        `${student.name ? student.name.replace(/\s+/g, '_') : 'Student'}_Resume.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      showSuccess(`Downloaded resume for ${student.name || 'candidate'}.`);
+    } catch (err) {
+      showError(err.message || 'Failed to download resume file.');
+    } finally {
+      setDownloadingStudentId(null);
+    }
+  };
+
+  // Cleanup Blob URL on component unmount
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrl) {
+        window.URL.revokeObjectURL(previewBlobUrl);
+      }
+    };
+  }, [previewBlobUrl]);
 
   const selectedCount = applicants.filter((a) => a.status === 'Selected').length;
 
@@ -326,44 +431,99 @@ const DriveApplicants = () => {
                       </td>
 
                       <td>
-                        {s.resumeUrl ? (
-                          <a
-                            href={s.resumeUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              fontSize: '0.8rem',
-                              color: '#2563eb',
-                              fontWeight: 600,
-                            }}
-                          >
-                            <span>Resume</span>
-                            <ExternalLink size={12} />
-                          </a>
-                        ) : (
-                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                            No resume link
-                          </span>
-                        )}
-                        {s.skills && s.skills.length > 0 && (
-                          <div
-                            style={{
-                              fontSize: '0.75rem',
-                              color: '#64748b',
-                              marginTop: '0.2rem',
-                              maxWidth: '180px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={s.skills.join(', ')}
-                          >
-                            {s.skills.slice(0, 3).join(', ')}
-                          </div>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {/* Uploaded Resume Actions */}
+                          {hasUploadedResume(s) && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                              {isStudentPdf(s) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPreview(s)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{
+                                    padding: '0.2rem 0.5rem',
+                                    fontSize: '0.75rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    background: '#eff6ff',
+                                    color: '#1d4ed8',
+                                    borderColor: '#bfdbfe',
+                                  }}
+                                  title="Preview uploaded PDF resume"
+                                >
+                                  <Eye size={12} />
+                                  <span>Preview</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadResume(s)}
+                                disabled={downloadingStudentId === s._id}
+                                className="btn btn-secondary btn-sm"
+                                style={{
+                                  padding: '0.2rem 0.5rem',
+                                  fontSize: '0.75rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                }}
+                                title={`Download ${s.resumeFile?.originalName || 'resume'}`}
+                              >
+                                <Download size={12} />
+                                <span>{isStudentPdf(s) ? 'Download' : 'Download DOC'}</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* External Resume URL */}
+                          {s.resumeUrl && (
+                            <div>
+                              <a
+                                href={s.resumeUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.775rem',
+                                  color: '#2563eb',
+                                  fontWeight: 600,
+                                }}
+                                title={s.resumeUrl}
+                              >
+                                <span>External Link</span>
+                                <ExternalLink size={12} />
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Neither exists */}
+                          {!hasUploadedResume(s) && !s.resumeUrl && (
+                            <span style={{ fontSize: '0.775rem', color: '#94a3b8' }}>
+                              No resume available
+                            </span>
+                          )}
+
+                          {/* Skills List */}
+                          {s.skills && s.skills.length > 0 && (
+                            <div
+                              style={{
+                                fontSize: '0.725rem',
+                                color: '#64748b',
+                                marginTop: '0.1rem',
+                                maxWidth: '180px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={s.skills.join(', ')}
+                            >
+                              {s.skills.slice(0, 3).join(', ')}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       <td style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>
@@ -419,7 +579,7 @@ const DriveApplicants = () => {
         isOpen={!!selectedStudentForView}
         onClose={() => setSelectedStudentForView(null)}
         title="Student Candidate Profile"
-        maxWidth="520px"
+        maxWidth="580px"
       >
         {selectedStudentForView && (
           <div>
@@ -480,43 +640,214 @@ const DriveApplicants = () => {
               </div>
             </div>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '0.4rem', letterSpacing: '0.5px' }}>
                 Technical Skills
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {selectedStudentForView.skills?.map((sk, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      background: '#eff6ff',
-                      color: '#1d4ed8',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '6px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {sk}
-                  </span>
-                ))}
+                {selectedStudentForView.skills && selectedStudentForView.skills.length > 0 ? (
+                  selectedStudentForView.skills.map((sk, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '6px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {sk}
+                    </span>
+                  ))
+                ) : (
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No skills listed</span>
+                )}
               </div>
             </div>
 
-            {selectedStudentForView.resumeUrl && (
-              <div style={{ marginBottom: '1rem' }}>
-                <a
-                  href={selectedStudentForView.resumeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary btn-sm"
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  <ExternalLink size={14} />
-                  <span>Open Resume / Portfolio</span>
-                </a>
+            {/* Resume & Portfolio Documents Section */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  marginBottom: '0.5rem',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                Resume & Portfolio Documents
               </div>
-            )}
+
+              {/* Case A & C: Uploaded Resume */}
+              {hasUploadedResume(selectedStudentForView) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.75rem 1rem',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    marginBottom: selectedStudentForView.resumeUrl ? '0.6rem' : '0',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        background: isStudentPdf(selectedStudentForView) ? '#eff6ff' : '#f0fdf4',
+                        color: isStudentPdf(selectedStudentForView) ? '#2563eb' : '#059669',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <FileText size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                        {selectedStudentForView.resumeFile.originalName || 'Uploaded Resume Document'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span>{formatFileSize(selectedStudentForView.resumeFile.size)}</span>
+                        <span>•</span>
+                        <span>
+                          {selectedStudentForView.resumeFile.uploadedAt
+                            ? `Uploaded ${new Date(selectedStudentForView.resumeFile.uploadedAt).toLocaleDateString()}`
+                            : 'Uploaded File'}
+                        </span>
+                        {!isStudentPdf(selectedStudentForView) && (
+                          <span style={{ color: '#6366f1', fontWeight: 500 }}>
+                            (DOC/DOCX • Download only)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    {isStudentPdf(selectedStudentForView) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPreview(selectedStudentForView)}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          borderColor: '#bfdbfe',
+                        }}
+                      >
+                        <Eye size={14} />
+                        <span>Preview</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadResume(selectedStudentForView)}
+                      disabled={downloadingStudentId === selectedStudentForView._id}
+                      className="btn btn-primary btn-sm"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                      <Download size={14} />
+                      <span>Download</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Case B & C: External Resume Link */}
+              {selectedStudentForView.resumeUrl && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.75rem 1rem',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        background: '#f8fafc',
+                        color: '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <ExternalLink size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                        External Resume / Portfolio Link
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#2563eb',
+                          maxWidth: '260px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={selectedStudentForView.resumeUrl}
+                      >
+                        {selectedStudentForView.resumeUrl}
+                      </div>
+                    </div>
+                  </div>
+
+                  <a
+                    href={selectedStudentForView.resumeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    <ExternalLink size={14} />
+                    <span>Visit Resume</span>
+                  </a>
+                </div>
+              )}
+
+              {/* Case D: Neither */}
+              {!hasUploadedResume(selectedStudentForView) && !selectedStudentForView.resumeUrl && (
+                <div
+                  style={{
+                    padding: '0.85rem 1rem',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px dashed #cbd5e1',
+                    color: '#94a3b8',
+                    fontSize: '0.85rem',
+                    textAlign: 'center',
+                  }}
+                >
+                  No resume available for this candidate
+                </div>
+              )}
+            </div>
 
             <div
               className="modal-footer"
@@ -532,6 +863,116 @@ const DriveApplicants = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* PDF Resume Preview Modal */}
+      <Modal
+        isOpen={previewModalOpen}
+        onClose={handleClosePreview}
+        title={`Resume Preview — ${previewStudent?.name || 'Student Candidate'} (${previewStudent?.resumeFile?.originalName || 'Resume.pdf'})`}
+        maxWidth="880px"
+      >
+        <div>
+          {previewLoading && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4rem 2rem',
+                color: '#2563eb',
+                gap: '1rem',
+              }}
+            >
+              <Loader2 size={36} className="spin" />
+              <div style={{ fontWeight: 600, color: '#475569' }}>
+                Fetching authenticated PDF preview for {previewStudent?.name || 'candidate'}...
+              </div>
+            </div>
+          )}
+
+          {previewError && !previewLoading && (
+            <div
+              style={{
+                padding: '2rem',
+                textAlign: 'center',
+                background: '#fef2f2',
+                borderRadius: '8px',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+              }}
+            >
+              <AlertCircle size={36} style={{ margin: '0 auto 1rem', color: '#dc2626' }} />
+              <h4 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                Preview Not Available
+              </h4>
+              <p style={{ fontSize: '0.875rem', marginBottom: '1.25rem', color: '#7f1d1d' }}>
+                {previewError}
+              </p>
+              {previewStudent && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadResume(previewStudent)}
+                  className="btn btn-primary btn-sm"
+                  style={{ margin: '0 auto' }}
+                >
+                  <Download size={16} />
+                  <span>Download Resume File Instead</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {previewBlobUrl && !previewLoading && !previewError && (
+            <div>
+              <iframe
+                src={previewBlobUrl}
+                title={`PDF Resume Preview - ${previewStudent?.name || 'Student'}`}
+                style={{
+                  width: '100%',
+                  height: '70vh',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  background: '#f8fafc',
+                }}
+              />
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: '1rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #f1f5f9',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Viewing authenticated PDF resume stream for <strong>{previewStudent?.name}</strong> ({previewStudent?.rollNo}).
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadResume(previewStudent)}
+                    className="btn btn-primary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Download size={15} />
+                    <span>Download PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClosePreview}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Close Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

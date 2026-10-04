@@ -502,7 +502,13 @@ const uploadResume = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Resume uploaded successfully!',
-      resumeFile: user.resumeFile,
+      resumeFile: {
+        filename: user.resumeFile.filename,
+        originalName: user.resumeFile.originalName,
+        mimeType: user.resumeFile.mimeType,
+        size: user.resumeFile.size,
+        uploadedAt: user.resumeFile.uploadedAt,
+      },
     });
   } catch (error) {
     // If saving to DB fails, clean up the newly uploaded file to avoid orphans

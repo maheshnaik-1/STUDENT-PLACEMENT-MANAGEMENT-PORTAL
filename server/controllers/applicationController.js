@@ -150,7 +150,7 @@ const getDriveApplicants = async (req, res, next) => {
     let applications = await Application.find(query)
       .populate(
         'student',
-        'name email rollNo branch cgpa activeBacklogs passingYear phone skills resumeUrl'
+        'name email rollNo branch cgpa activeBacklogs passingYear phone skills resumeUrl resumeFile.filename resumeFile.originalName resumeFile.mimeType resumeFile.size resumeFile.uploadedAt'
       )
       .sort({ appliedAt: -1 });
 

@@ -77,7 +77,7 @@ const userSchema = new mongoose.Schema(
       originalName: { type: String, default: null },
       mimeType: { type: String, default: null },
       size: { type: Number, default: null },
-      path: { type: String, default: null },
+      path: { type: String, default: null, select: false },
       uploadedAt: { type: Date, default: null },
     },
     // v2.1.1 Additive Profile Foundation Fields
