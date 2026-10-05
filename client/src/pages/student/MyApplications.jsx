@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import Modal from '../../components/common/Modal';
 import {
   FileCheck2,
   Building2,
@@ -11,11 +12,33 @@ import {
   MessageSquare,
   Sparkles,
   Award,
+  Search,
+  Filter,
+  Eye,
+  MapPin,
+  Layers,
+  Clock,
+  CheckCircle2,
+  Briefcase,
 } from 'lucide-react';
+
+const STATUS_FILTERS = [
+  'ALL',
+  'Applied',
+  'Shortlisted',
+  'Technical Round',
+  'Interview',
+  'Selected',
+  'Rejected',
+];
 
 const MyApplications = () => {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [selectedApp, setSelectedApp] = useState(null);
+
   const { showError } = useNotification();
 
   const fetchApplications = async () => {
@@ -36,6 +59,31 @@ const MyApplications = () => {
     fetchApplications();
   }, []);
 
+  // Filter applications by status and search keyword
+  const filteredApplications = applications.filter((app) => {
+    const drive = app.drive || {};
+    const company = drive.company || {};
+
+    const matchesStatus =
+      statusFilter === 'ALL' || app.status === statusFilter;
+
+    const searchLower = search.toLowerCase();
+    const matchesSearch =
+      !search ||
+      (company.name && company.name.toLowerCase().includes(searchLower)) ||
+      (drive.title && drive.title.toLowerCase().includes(searchLower)) ||
+      (drive.location && drive.location.toLowerCase().includes(searchLower)) ||
+      (app.remarks && app.remarks.toLowerCase().includes(searchLower));
+
+    return matchesStatus && matchesSearch;
+  });
+
+  const selectedCount = applications.filter((a) => a.status === 'Selected').length;
+  const shortlistedCount = applications.filter((a) => a.status === 'Shortlisted').length;
+  const inProgressCount = applications.filter((a) =>
+    ['Applied', 'Technical Round', 'Interview'].includes(a.status)
+  ).length;
+
   return (
     <div>
       {/* Page Header */}
@@ -52,6 +100,119 @@ const MyApplications = () => {
         </Link>
       </div>
 
+      {/* Metrics Summary Banner */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            padding: '1rem 1.25rem',
+            margin: 0,
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+          }}
+        >
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Total Submissions
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginTop: '0.2rem' }}>
+            {applications.length}
+          </div>
+        </div>
+
+        <div
+          className="card"
+          style={{
+            padding: '1rem 1.25rem',
+            margin: 0,
+            background: '#ffffff',
+            border: '1px solid #bfdbfe',
+          }}
+        >
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase' }}>
+            Shortlisted
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#2563eb', marginTop: '0.2rem' }}>
+            {shortlistedCount}
+          </div>
+        </div>
+
+        <div
+          className="card"
+          style={{
+            padding: '1rem 1.25rem',
+            margin: 0,
+            background: '#ffffff',
+            border: '1px solid #a7f3d0',
+          }}
+        >
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>
+            Offers Received
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669', marginTop: '0.2rem' }}>
+            {selectedCount}
+          </div>
+        </div>
+
+        <div
+          className="card"
+          style={{
+            padding: '1rem 1.25rem',
+            margin: 0,
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+          }}
+        >
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Under Review
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#475569', marginTop: '0.2rem' }}>
+            {inProgressCount}
+          </div>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div className="filter-bar">
+        <div className="search-input-wrapper">
+          <Search size={18} className="search-icon" />
+          <input
+            type="text"
+            className="form-control search-input"
+            placeholder="Search by company, role, location, or feedback..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Filter size={16} color="#64748b" />
+          <select
+            className="form-control"
+            style={{ width: 'auto' }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {STATUS_FILTERS.map((s) => (
+              <option key={s} value={s}>
+                Status: {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>
+          Showing: {filteredApplications.length} of {applications.length}
+        </div>
+      </div>
+
+      {/* Applications Roster / Table */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '4rem 1rem', color: '#64748b' }}>
           <p>Loading application history...</p>
@@ -71,6 +232,25 @@ const MyApplications = () => {
             Browse Available Drives
           </Link>
         </div>
+      ) : filteredApplications.length === 0 ? (
+        <div className="card empty-state">
+          <Search size={40} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
+          <h3 className="empty-title">No Matching Applications</h3>
+          <p className="empty-subtitle">
+            No applications match your search query or status filter. Try clearing filters to see all submissions.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('ALL');
+            }}
+            className="btn btn-secondary btn-sm"
+            style={{ marginTop: '1rem' }}
+          >
+            Reset Filters
+          </button>
+        </div>
       ) : (
         <div className="card">
           <div className="table-responsive">
@@ -79,14 +259,14 @@ const MyApplications = () => {
                 <tr>
                   <th>Recruiting Company</th>
                   <th>Drive Role & Package</th>
-                  <th>Applied Date</th>
+                  <th>Applied On</th>
                   <th>Current Status</th>
                   <th>Placement Officer Feedback</th>
-                  <th>Action</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {applications.map((app) => {
+                {filteredApplications.map((app) => {
                   const drive = app.drive || {};
                   const company = drive.company || {};
                   const isSelected = app.status === 'Selected';
@@ -150,42 +330,68 @@ const MyApplications = () => {
                         </div>
                       </td>
 
-                      <td style={{ fontSize: '0.85rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {new Date(app.appliedAt).toLocaleDateString()}
+                      <td style={{ fontSize: '0.825rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        <div>{new Date(app.appliedAt).toLocaleDateString()}</div>
+                        {app.updatedAt && app.updatedAt !== app.appliedAt && (
+                          <div style={{ fontSize: '0.725rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                            Updated {new Date(app.updatedAt).toLocaleDateString()}
+                          </div>
+                        )}
                       </td>
 
                       <td>
                         <StatusBadge status={app.status} />
                       </td>
 
-                      <td style={{ maxWidth: '280px' }}>
-                        <div
-                          style={{
-                            fontSize: '0.85rem',
-                            color: '#475569',
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '0.35rem',
-                          }}
-                        >
-                          <MessageSquare
-                            size={14}
-                            color="#94a3b8"
-                            style={{ flexShrink: 0, marginTop: '3px' }}
-                          />
-                          <span>{app.remarks || 'Application under review.'}</span>
-                        </div>
+                      <td style={{ maxWidth: '300px' }}>
+                        {app.remarks && app.remarks.trim() ? (
+                          <div
+                            style={{
+                              fontSize: '0.825rem',
+                              color: '#334155',
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.4rem',
+                              background: '#f8fafc',
+                              padding: '0.4rem 0.65rem',
+                              borderRadius: '6px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <MessageSquare
+                              size={14}
+                              color="#2563eb"
+                              style={{ flexShrink: 0, marginTop: '2px' }}
+                            />
+                            <span style={{ fontWeight: 500 }}>{app.remarks}</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.825rem' }}>
+                            No feedback provided yet.
+                          </span>
+                        )}
                       </td>
 
-                      <td>
-                        <Link
-                          to={`/student/drives/${drive._id}`}
-                          className="btn btn-secondary btn-sm"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-                        >
-                          <span>Drive Details</span>
-                          <ExternalLink size={13} />
-                        </Link>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedApp(app)}
+                            className="btn btn-secondary btn-sm"
+                            title="View Full Application Details"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                          >
+                            <Eye size={13} />
+                            <span>Details</span>
+                          </button>
+                          <Link
+                            to={`/student/drives/${drive._id}`}
+                            className="btn btn-secondary btn-sm"
+                            title="View Placement Drive Page"
+                          >
+                            <ExternalLink size={13} />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -195,6 +401,236 @@ const MyApplications = () => {
           </div>
         </div>
       )}
+
+      {/* Application Quick Details Modal */}
+      <Modal
+        isOpen={!!selectedApp}
+        onClose={() => setSelectedApp(null)}
+        title="Application & Drive Details"
+        maxWidth="620px"
+      >
+        {selectedApp && (
+          <div>
+            {/* Header: Company & Drive Role */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                paddingBottom: '1rem',
+                borderBottom: '1px solid #e2e8f0',
+                marginBottom: '1.25rem',
+              }}
+            >
+              {selectedApp.drive?.company?.logoUrl ? (
+                <img
+                  src={selectedApp.drive.company.logoUrl}
+                  alt={selectedApp.drive.company.name}
+                  style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '12px',
+                    objectFit: 'cover',
+                    border: '1px solid #e2e8f0',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '1.3rem',
+                  }}
+                >
+                  {selectedApp.drive?.company?.name
+                    ? selectedApp.drive.company.name.substring(0, 2).toUpperCase()
+                    : 'CO'}
+                </div>
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>
+                  {selectedApp.drive?.company?.name || 'Recruiting Partner'}
+                </div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0.1rem 0' }}>
+                  {selectedApp.drive?.title || 'Placement Drive'}
+                </h3>
+                <div style={{ fontSize: '0.825rem', color: '#059669', fontWeight: 700 }}>
+                  Package CTC: {selectedApp.drive?.packageCTC || 'Competitive'}
+                </div>
+              </div>
+            </div>
+
+            {/* Application Status & Timestamps Card */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '1rem',
+                marginBottom: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                  Current Application Status
+                </span>
+                <StatusBadge status={selectedApp.status} />
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '0.75rem',
+                  fontSize: '0.85rem',
+                  borderTop: '1px solid #e2e8f0',
+                  paddingTop: '0.75rem',
+                }}
+              >
+                <div>
+                  <span style={{ color: '#64748b' }}>Submitted On:</span>{' '}
+                  <strong style={{ color: '#1e293b' }}>
+                    {new Date(selectedApp.appliedAt).toLocaleString()}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b' }}>Last Updated:</span>{' '}
+                  <strong style={{ color: '#1e293b' }}>
+                    {selectedApp.updatedAt
+                      ? new Date(selectedApp.updatedAt).toLocaleString()
+                      : new Date(selectedApp.appliedAt).toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Officer Feedback Card */}
+            <div
+              style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '10px',
+                padding: '1rem',
+                marginBottom: '1rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: '#1e40af',
+                  textTransform: 'uppercase',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                <MessageSquare size={15} />
+                <span>Placement Officer Feedback & Notes</span>
+              </div>
+              <p
+                style={{
+                  color: '#1e293b',
+                  fontSize: '0.9rem',
+                  fontWeight: 500,
+                  lineHeight: 1.5,
+                  margin: 0,
+                }}
+              >
+                {selectedApp.remarks && selectedApp.remarks.trim()
+                  ? selectedApp.remarks
+                  : 'No feedback provided yet. Your application is currently under review by the Training & Placement Cell.'}
+              </p>
+            </div>
+
+            {/* Recruitment Rounds & Drive Info */}
+            {selectedApp.drive?.rounds && selectedApp.drive.rounds.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <div
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    marginBottom: '0.5rem',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Recruitment Process Rounds
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {selectedApp.drive.rounds.map((round, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        background: '#f8fafc',
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        fontSize: '0.85rem',
+                        color: '#334155',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          background: '#eff6ff',
+                          color: '#2563eb',
+                          fontWeight: 700,
+                          fontSize: '0.75rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span>{round}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div
+              className="modal-footer"
+              style={{ margin: '1.25rem -1.5rem -1.5rem', padding: '1rem 1.5rem' }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedApp(null)}
+                className="btn btn-secondary"
+              >
+                Close
+              </button>
+              {selectedApp.drive?._id && (
+                <Link
+                  to={`/student/drives/${selectedApp.drive._id}`}
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  <span>Open Drive Posting</span>
+                  <ExternalLink size={14} />
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

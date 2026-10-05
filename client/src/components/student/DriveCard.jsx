@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import StatusBadge from '../common/StatusBadge';
 import {
   Building2,
   MapPin,
@@ -201,18 +202,22 @@ const DriveCard = ({ drive, onApply, isApplying }) => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem',
+                justifyContent: 'space-between',
                 background: '#eff6ff',
                 color: '#1e40af',
                 border: '1px solid #bfdbfe',
                 padding: '0.45rem 0.75rem',
                 borderRadius: '8px',
                 fontSize: '0.825rem',
-                fontWeight: 600,
+                flexWrap: 'wrap',
+                gap: '0.4rem',
               }}
             >
-              <FileCheck size={16} color="#2563eb" />
-              <span>Applied • Current Status: <strong>{drive.myApplicationStatus || 'Applied'}</strong></span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+                <FileCheck size={16} color="#2563eb" />
+                <span>Application Submitted</span>
+              </div>
+              <StatusBadge status={drive.myApplicationStatus || 'Applied'} />
             </div>
           ) : isEligible ? (
             <div

@@ -244,17 +244,18 @@ const DriveDetails = () => {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.5rem',
+                  gap: '0.75rem',
                   background: '#eff6ff',
-                  color: '#1e40af',
-                  padding: '0.625rem 1.25rem',
+                  padding: '0.5rem 1rem',
                   borderRadius: '10px',
-                  fontWeight: 700,
                   border: '1px solid #bfdbfe',
                 }}
               >
-                <FileCheck2 size={18} />
-                <span>Already Applied (Status: {drive.myApplication?.status || 'Applied'})</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#1e40af', fontWeight: 700, fontSize: '0.9rem' }}>
+                  <FileCheck2 size={18} />
+                  <span>Already Applied</span>
+                </div>
+                <StatusBadge status={drive.myApplication?.status || drive.myApplicationStatus || 'Applied'} />
               </div>
             ) : isEligible ? (
               <button
