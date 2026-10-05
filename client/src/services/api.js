@@ -52,6 +52,20 @@ async function request(endpoint, options = {}) {
   }
 }
 
+/**
+ * Helper to build safe query string from params object without undefined/null
+ */
+const buildQuery = (params = {}) => {
+  const cleanParams = Object.entries(params).reduce((acc, [key, val]) => {
+    if (val !== undefined && val !== null && val !== '') {
+      acc[key] = val;
+    }
+    return acc;
+  }, {});
+  const query = new URLSearchParams(cleanParams).toString();
+  return query ? `?${query}` : '';
+};
+
 export const api = {
   // Authentication APIs
   auth: {
@@ -97,8 +111,7 @@ export const api = {
   // Company APIs
   companies: {
     getAll: (params = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return request(`/companies${query ? `?${query}` : ''}`);
+      return request(`/companies${buildQuery(params)}`);
     },
     getById: (id) => request(`/companies/${id}`),
     create: (companyData) =>
@@ -120,8 +133,7 @@ export const api = {
   // Placement Drive APIs
   drives: {
     getAll: (params = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return request(`/drives${query ? `?${query}` : ''}`);
+      return request(`/drives${buildQuery(params)}`);
     },
     getById: (id) => request(`/drives/${id}`),
     create: (driveData) =>
@@ -148,8 +160,7 @@ export const api = {
       }),
     getMyApplications: () => request('/applications/my-applications'),
     getDriveApplicants: (driveId, params = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return request(`/applications/drive/${driveId}${query ? `?${query}` : ''}`);
+      return request(`/applications/drive/${driveId}${buildQuery(params)}`);
     },
     updateStatus: (applicationId, statusData) =>
       request(`/applications/${applicationId}/status`, {
@@ -157,13 +168,15 @@ export const api = {
         body: JSON.stringify(statusData),
       }),
     getStats: () => request('/applications/stats'),
+    getAnalytics: (params = {}) => {
+      return request(`/applications/analytics${buildQuery(params)}`);
+    },
   },
 
   // Student Directory APIs (Officer view)
   students: {
     getAll: (params = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return request(`/students${query ? `?${query}` : ''}`);
+      return request(`/students${buildQuery(params)}`);
     },
     getById: (id) => request(`/students/${id}`),
   },

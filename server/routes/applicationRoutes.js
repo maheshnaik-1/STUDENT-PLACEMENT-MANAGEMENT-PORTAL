@@ -6,6 +6,7 @@ const {
   getDriveApplicants,
   updateApplicationStatus,
   getPlacementStats,
+  getOfficerAnalytics,
 } = require('../controllers/applicationController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -17,6 +18,7 @@ router.post('/apply/:driveId', protect, authorize('student'), applyForDrive);
 router.get('/my-applications', protect, authorize('student'), getMyApplications);
 
 // Placement Officer routes
+router.get('/analytics', protect, authorize('officer'), getOfficerAnalytics);
 router.get('/drive/:driveId', protect, authorize('officer'), getDriveApplicants);
 router.put('/:id/status', protect, authorize('officer'), updateApplicationStatus);
 

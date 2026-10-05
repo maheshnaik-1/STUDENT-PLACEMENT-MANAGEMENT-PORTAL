@@ -11,7 +11,7 @@ const getAllStudents = async (req, res, next) => {
     const { branch, search, minCGPA } = req.query;
     let query = { role: 'student' };
 
-    if (branch && branch !== 'ALL') {
+    if (branch && branch !== 'ALL' && branch !== 'undefined') {
       query.branch = branch;
     }
 

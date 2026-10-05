@@ -354,10 +354,362 @@ const getPlacementStats = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get detailed Placement Analytics & Reports for Officer
+ * @route   GET /api/applications/analytics
+ * @access  Private (Officer only)
+ */
+const getOfficerAnalytics = async (req, res, next) => {
+  try {
+    const { driveId, branch, status, search } = req.query;
+
+    // Fetch all base data
+    const allDrives = await PlacementDrive.find()
+      .populate('company', 'name logoUrl location industry website')
+      .sort({ createdAt: -1 });
+
+    const allStudents = await User.find({ role: 'student' })
+      .select('name email rollNo branch cgpa activeBacklogs passingYear')
+      .sort({ rollNo: 1 });
+
+    // Distinct filter options
+    const distinctBranches = [...new Set(allStudents.map((s) => s.branch).filter(Boolean))].sort();
+    const driveFilterOptions = allDrives.map((d) => ({
+      _id: d._id,
+      title: d.title,
+      companyName: d.company?.name || 'Company',
+      packageCTC: d.packageCTC,
+      status: d.status,
+    }));
+    const validStatuses = [
+      'Applied',
+      'Shortlisted',
+      'Technical Round',
+      'Interview',
+      'Selected',
+      'Rejected',
+    ];
+
+    // Build query for applications based on filters
+    let applicationQuery = {};
+    if (driveId && driveId !== 'ALL') {
+      applicationQuery.drive = driveId;
+    }
+    if (status && status !== 'ALL') {
+      applicationQuery.status = status;
+    }
+
+    let applications = await Application.find(applicationQuery)
+      .populate('student', 'name email rollNo branch cgpa activeBacklogs phone')
+      .populate({
+        path: 'drive',
+        populate: { path: 'company', select: 'name logoUrl location industry' },
+      })
+      .sort({ appliedAt: -1 });
+
+    // Filter by branch if requested
+    if (branch && branch !== 'ALL') {
+      applications = applications.filter(
+        (app) => app.student && app.student.branch === branch
+      );
+    }
+
+    // Filter by search keyword (student name, roll number, email, company name, drive title)
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      applications = applications.filter((app) => {
+        const sName = (app.student?.name || '').toLowerCase();
+        const sRoll = (app.student?.rollNo || '').toLowerCase();
+        const sEmail = (app.student?.email || '').toLowerCase();
+        const cName = (app.drive?.company?.name || '').toLowerCase();
+        const dTitle = (app.drive?.title || '').toLowerCase();
+        return (
+          sName.includes(q) ||
+          sRoll.includes(q) ||
+          sEmail.includes(q) ||
+          cName.includes(q) ||
+          dTitle.includes(q)
+        );
+      });
+    }
+
+    // Compute Summary KPIs
+    const totalApplications = applications.length;
+    const uniqueApplicantIds = new Set(
+      applications.map((a) => a.student?._id?.toString()).filter(Boolean)
+    );
+    const uniqueApplicantsCount = uniqueApplicantIds.size;
+
+    const relevantStudents =
+      branch && branch !== 'ALL'
+        ? allStudents.filter((s) => s.branch === branch)
+        : allStudents;
+    const totalStudents = relevantStudents.length;
+
+    const totalSelected = applications.filter((a) => a.status === 'Selected').length;
+    const totalShortlisted = applications.filter((a) => a.status === 'Shortlisted').length;
+    const totalTechnicalRound = applications.filter((a) => a.status === 'Technical Round').length;
+    const totalInterview = applications.filter((a) => a.status === 'Interview').length;
+    const totalApplied = applications.filter((a) => a.status === 'Applied').length;
+    const totalRejected = applications.filter((a) => a.status === 'Rejected').length;
+    const totalUnderReview = totalApplied + totalTechnicalRound + totalInterview;
+
+    // Unique students who received at least one selection offer in this filtered dataset
+    const uniqueSelectedStudentIds = new Set(
+      applications
+        .filter((a) => a.status === 'Selected')
+        .map((a) => a.student?._id?.toString())
+        .filter(Boolean)
+    );
+    const uniqueSelectedStudentsCount = uniqueSelectedStudentIds.size;
+
+    const selectionRate =
+      totalApplications > 0
+        ? Number(((totalSelected / totalApplications) * 100).toFixed(1))
+        : 0;
+
+    const studentPlacementRate =
+      totalStudents > 0
+        ? Number(((uniqueSelectedStudentsCount / totalStudents) * 100).toFixed(1))
+        : 0;
+
+    // Status Distribution
+    const statusDistribution = validStatuses.map((st) => {
+      const count = applications.filter((a) => a.status === st).length;
+      const percentage =
+        totalApplications > 0
+          ? Number(((count / totalApplications) * 100).toFixed(1))
+          : 0;
+      return {
+        status: st,
+        count,
+        percentage,
+      };
+    });
+
+    // Drive-Wise Analytics
+    const targetDrives =
+      driveId && driveId !== 'ALL'
+        ? allDrives.filter((d) => d._id.toString() === driveId.toString())
+        : allDrives;
+
+    const driveAnalytics = targetDrives.map((d) => {
+      const driveApps = applications.filter(
+        (a) => a.drive && a.drive._id.toString() === d._id.toString()
+      );
+      const selCount = driveApps.filter((a) => a.status === 'Selected').length;
+      const appCount = driveApps.length;
+      const selRate =
+        appCount > 0 ? Number(((selCount / appCount) * 100).toFixed(1)) : 0;
+
+      return {
+        driveId: d._id,
+        driveTitle: d.title,
+        companyName: d.company?.name || 'Company',
+        companyLogo: d.company?.logoUrl || '',
+        packageCTC: d.packageCTC,
+        driveStatus: d.status,
+        driveDate: d.driveDate,
+        applicationsCount: appCount,
+        appliedCount: driveApps.filter((a) => a.status === 'Applied').length,
+        shortlistedCount: driveApps.filter((a) => a.status === 'Shortlisted').length,
+        technicalRoundCount: driveApps.filter((a) => a.status === 'Technical Round').length,
+        interviewCount: driveApps.filter((a) => a.status === 'Interview').length,
+        selectedCount: selCount,
+        rejectedCount: driveApps.filter((a) => a.status === 'Rejected').length,
+        underReviewCount: driveApps.filter((a) =>
+          ['Applied', 'Technical Round', 'Interview'].includes(a.status)
+        ).length,
+        selectionRate: selRate,
+      };
+    });
+
+    // Branch-Wise Analytics
+    const branchMap = {};
+    allStudents.forEach((s) => {
+      const b = s.branch || 'Unknown';
+      if (!branchMap[b]) {
+        branchMap[b] = {
+          branch: b,
+          totalStudents: 0,
+          applicationsCount: 0,
+          shortlistedCount: 0,
+          technicalRoundCount: 0,
+          interviewCount: 0,
+          selectedCount: 0,
+          rejectedCount: 0,
+          underReviewCount: 0,
+        };
+      }
+      branchMap[b].totalStudents += 1;
+    });
+
+    applications.forEach((a) => {
+      const b = a.student?.branch || 'Unknown';
+      if (!branchMap[b]) {
+        branchMap[b] = {
+          branch: b,
+          totalStudents: 0,
+          applicationsCount: 0,
+          shortlistedCount: 0,
+          technicalRoundCount: 0,
+          interviewCount: 0,
+          selectedCount: 0,
+          rejectedCount: 0,
+          underReviewCount: 0,
+        };
+      }
+      branchMap[b].applicationsCount += 1;
+      if (a.status === 'Shortlisted') branchMap[b].shortlistedCount += 1;
+      else if (a.status === 'Technical Round') branchMap[b].technicalRoundCount += 1;
+      else if (a.status === 'Interview') branchMap[b].interviewCount += 1;
+      else if (a.status === 'Selected') branchMap[b].selectedCount += 1;
+      else if (a.status === 'Rejected') branchMap[b].rejectedCount += 1;
+
+      if (['Applied', 'Technical Round', 'Interview'].includes(a.status)) {
+        branchMap[b].underReviewCount += 1;
+      }
+    });
+
+    let branchAnalytics = Object.values(branchMap).map((b) => ({
+      ...b,
+      selectionRate:
+        b.applicationsCount > 0
+          ? Number(((b.selectedCount / b.applicationsCount) * 100).toFixed(1))
+          : 0,
+    }));
+
+    if (branch && branch !== 'ALL') {
+      branchAnalytics = branchAnalytics.filter((b) => b.branch === branch);
+    }
+
+    // Recent applications list (preview of latest applications)
+    const recentApplications = applications.slice(0, 10).map((a) => ({
+      _id: a._id,
+      studentName: a.student?.name || 'Student',
+      rollNo: a.student?.rollNo || 'N/A',
+      branch: a.student?.branch || 'N/A',
+      email: a.student?.email || '',
+      companyName: a.drive?.company?.name || 'Company',
+      driveTitle: a.drive?.title || 'Drive',
+      packageCTC: a.drive?.packageCTC || 'N/A',
+      status: a.status,
+      remarks: a.remarks || '',
+      appliedAt: a.appliedAt,
+    }));
+
+    // Applications roster for table & CSV export
+    const applicationsRoster = applications.map((a) => ({
+      _id: a._id,
+      rollNo: a.student?.rollNo || 'N/A',
+      studentName: a.student?.name || 'Student',
+      email: a.student?.email || '',
+      branch: a.student?.branch || 'N/A',
+      cgpa: a.student?.cgpa || 0,
+      activeBacklogs: a.student?.activeBacklogs ?? 0,
+      companyName: a.drive?.company?.name || 'Company',
+      driveTitle: a.drive?.title || 'Drive',
+      packageCTC: a.drive?.packageCTC || 'N/A',
+      status: a.status,
+      remarks: a.remarks || '',
+      appliedAt: a.appliedAt,
+    }));
+
+    // All student applications to determine accurate placement status across all registered students
+    const allStudentApplications = await Application.find()
+      .populate({
+        path: 'drive',
+        populate: { path: 'company', select: 'name packageCTC' },
+      });
+
+    // Student Placement Master Roster (Respects branch & search filters, includes students with 0 applications)
+    let filteredStudents = allStudents;
+    if (branch && branch !== 'ALL' && branch !== 'undefined') {
+      filteredStudents = filteredStudents.filter((s) => s.branch === branch);
+    }
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      filteredStudents = filteredStudents.filter((s) => {
+        const sName = (s.name || '').toLowerCase();
+        const sRoll = (s.rollNo || '').toLowerCase();
+        const sEmail = (s.email || '').toLowerCase();
+        const sBranch = (s.branch || '').toLowerCase();
+        return sName.includes(q) || sRoll.includes(q) || sEmail.includes(q) || sBranch.includes(q);
+      });
+    }
+
+    const studentRoster = filteredStudents.map((st) => {
+      const stApps = allStudentApplications.filter(
+        (a) => a.student && a.student.toString() === st._id.toString()
+      );
+      const selectedApp = stApps.find((a) => a.status === 'Selected');
+
+      return {
+        _id: st._id,
+        rollNo: st.rollNo || 'N/A',
+        name: st.name || 'Student',
+        email: st.email || '',
+        branch: st.branch || 'N/A',
+        cgpa: st.cgpa || 0,
+        activeBacklogs: st.activeBacklogs ?? 0,
+        passingYear: st.passingYear || 2026,
+        totalApplications: stApps.length,
+        placementStatus: selectedApp
+          ? `Placed at ${selectedApp.drive?.company?.name || 'Company'}`
+          : stApps.length > 0
+          ? 'In Progress'
+          : 'Not Applied',
+        selectedOffer: selectedApp
+          ? {
+              driveTitle: selectedApp.drive?.title,
+              companyName: selectedApp.drive?.company?.name,
+              packageCTC: selectedApp.drive?.packageCTC,
+            }
+          : null,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary: {
+          totalDrives: targetDrives.length,
+          totalApplications,
+          uniqueApplicants: uniqueApplicantsCount,
+          totalStudents,
+          totalSelected,
+          totalShortlisted,
+          totalTechnicalRound,
+          totalInterview,
+          totalApplied,
+          totalRejected,
+          totalUnderReview,
+          selectionRate,
+          studentPlacementRate,
+        },
+        statusDistribution,
+        driveAnalytics,
+        branchAnalytics,
+        recentApplications,
+        applicationsRoster,
+        studentRoster,
+        availableFilters: {
+          branches: distinctBranches,
+          drives: driveFilterOptions,
+          statuses: validStatuses,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   applyForDrive,
   getMyApplications,
   getDriveApplicants,
   updateApplicationStatus,
   getPlacementStats,
+  getOfficerAnalytics,
 };
