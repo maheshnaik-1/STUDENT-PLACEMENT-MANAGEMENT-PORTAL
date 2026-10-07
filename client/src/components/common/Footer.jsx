@@ -15,13 +15,16 @@ const Footer = () => {
     >
       <div
         style={{
-          maxWidth: '1280px',
+          maxWidth: '1400px',
           margin: '0 auto',
+          padding: '0 0.5rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '1rem',
+          width: '100%',
+          boxSizing: 'border-box',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

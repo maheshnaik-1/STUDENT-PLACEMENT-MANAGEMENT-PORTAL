@@ -83,13 +83,27 @@
   padding: 0;
 }
 
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: #f8fafc;
   color: var(--slate-800);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -114,14 +128,17 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  flex: 1;
 }
 
 .main-content {
   flex: 1;
-  padding: 2rem 1.5rem 4rem;
-  max-width: 1280px;
+  padding: 2rem 2rem 4rem;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
@@ -138,16 +155,21 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 50;
+  width: 100%;
   transition: all var(--transition-fast);
 }
 
 .navbar-container {
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0.875rem 1.5rem;
+  padding: 0.875rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .navbar-brand {
@@ -159,6 +181,7 @@ a:hover {
   font-weight: 800;
   color: var(--slate-900);
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 .brand-icon {
@@ -176,8 +199,9 @@ a:hover {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
   list-style: none;
+  flex-wrap: wrap;
 }
 
 .nav-link {
@@ -344,6 +368,7 @@ a:hover {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.25rem;
   margin-bottom: 2rem;
+  width: 100%;
 }
 
 .stat-card {
@@ -355,12 +380,17 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+.stat-info {
+  min-width: 0;
 }
 
 .stat-info .stat-label {
@@ -387,6 +417,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+  flex-shrink: 0;
 }
 
 .stat-icon-blue { background: var(--primary-50); color: var(--primary-600); }
@@ -402,6 +433,8 @@ a:hover {
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   margin-bottom: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .card-header {
@@ -475,6 +508,7 @@ a:hover {
 .table-responsive {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
@@ -509,6 +543,7 @@ a:hover {
 /* Forms & Inputs */
 .form-group {
   margin-bottom: 1.25rem;
+  min-width: 0;
 }
 
 .form-label {
@@ -529,6 +564,7 @@ a:hover {
   border: 1px solid var(--slate-300);
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
+  box-sizing: border-box;
 }
 
 .form-control:focus {
@@ -541,6 +577,7 @@ a:hover {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
+  width: 100%;
 }
 
 .form-help {
@@ -604,9 +641,12 @@ a:hover {
   flex-direction: column;
   gap: 0.75rem;
   z-index: 9999;
+  max-width: calc(100vw - 3rem);
+  pointer-events: none;
 }
 
 .toast {
+  pointer-events: auto;
   background: var(--white);
   border-radius: var(--radius-lg);
   padding: 1rem 1.25rem;
@@ -614,7 +654,7 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-width: 320px;
+  min-width: 280px;
   max-width: 420px;
   border-left: 4px solid var(--primary-600);
   animation: slideInRight 0.3s ease;

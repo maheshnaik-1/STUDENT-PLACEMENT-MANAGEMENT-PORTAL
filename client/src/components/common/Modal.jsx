@@ -7,6 +7,7 @@ const Modal = ({
   title,
   children,
   maxWidth = '550px',
+  zIndex = 100,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -23,6 +24,7 @@ const Modal = ({
   return (
     <div
       className="modal-overlay"
+      style={{ zIndex }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

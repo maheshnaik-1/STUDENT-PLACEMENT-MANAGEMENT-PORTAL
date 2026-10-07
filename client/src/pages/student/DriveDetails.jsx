@@ -90,7 +90,7 @@ const DriveDetails = () => {
   const hasApplied = drive.hasApplied;
 
   return (
-    <div style={{ maxWidth: '980px', margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: '0 auto' }}>
       {/* Back Button */}
       <div style={{ marginBottom: '1.25rem' }}>
         <Link

@@ -43,6 +43,7 @@ const StatusUpdateModal = ({
       onClose={onClose}
       title="Update Student Selection Status"
       maxWidth="500px"
+      zIndex={200}
     >
       <form onSubmit={handleSubmit}>
         {/* Student Mini Profile Summary */}

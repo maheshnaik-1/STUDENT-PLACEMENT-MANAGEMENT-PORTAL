@@ -23,6 +23,17 @@ import {
   FileText,
   Loader2,
   AlertCircle,
+  CheckCircle2,
+  XCircle,
+  GraduationCap,
+  Award,
+  FolderGit2,
+  Globe,
+  Github,
+  Linkedin,
+  Clock,
+  Sparkles,
+  User,
 } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -57,6 +68,71 @@ const hasUploadedResume = (student) => {
   return Boolean(student?.resumeFile && student.resumeFile.filename);
 };
 
+/**
+ * Reusable eligibility evaluation for Drive vs Candidate
+ */
+const evaluateEligibility = (student, drive) => {
+  if (!student || !drive) return { isEligible: true, details: [] };
+
+  const elig = drive.eligibility || {};
+  const details = [];
+  let isEligible = true;
+
+  // 1. CGPA
+  const minCGPA = Number(elig.minCGPA) || 0;
+  const studentCGPA = Number(student.cgpa) || 0;
+  const cgpaOk = studentCGPA >= minCGPA;
+  if (!cgpaOk) isEligible = false;
+  details.push({
+    criteria: 'Minimum CGPA',
+    required: `≥ ${minCGPA.toFixed(2)}`,
+    actual: studentCGPA.toFixed(2),
+    passed: cgpaOk,
+  });
+
+  // 2. Backlogs
+  const maxBacklogs = elig.maxBacklogs !== undefined ? Number(elig.maxBacklogs) : 0;
+  const studentBacklogs = Number(student.activeBacklogs) || 0;
+  const backlogsOk = studentBacklogs <= maxBacklogs;
+  if (!backlogsOk) isEligible = false;
+  details.push({
+    criteria: 'Max Backlogs',
+    required: `≤ ${maxBacklogs}`,
+    actual: `${studentBacklogs}`,
+    passed: backlogsOk,
+  });
+
+  // 3. Branches
+  const eligibleBranches =
+    Array.isArray(elig.eligibleBranches) && elig.eligibleBranches.length > 0
+      ? elig.eligibleBranches
+      : [];
+  const branchOk = eligibleBranches.length === 0 || eligibleBranches.includes(student.branch);
+  if (!branchOk) isEligible = false;
+  details.push({
+    criteria: 'Eligible Branch',
+    required: eligibleBranches.length > 0 ? eligibleBranches.join(', ') : 'All Branches',
+    actual: student.branch || 'N/A',
+    passed: branchOk,
+  });
+
+  // 4. Passing Year
+  const reqPassingYear = Number(elig.passingYear);
+  const studentPassingYear = Number(student.passingYear);
+  const yearOk = !reqPassingYear || studentPassingYear === reqPassingYear;
+  if (!yearOk) isEligible = false;
+  if (reqPassingYear) {
+    details.push({
+      criteria: 'Passing Batch',
+      required: `${reqPassingYear}`,
+      actual: `${studentPassingYear || 'N/A'}`,
+      passed: yearOk,
+    });
+  }
+
+  return { isEligible, details };
+};
+
 const DriveApplicants = () => {
   const { driveId } = useParams();
   const { showSuccess, showError } = useNotification();
@@ -68,7 +144,7 @@ const DriveApplicants = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [selectedAppForStatus, setSelectedAppForStatus] = useState(null);
-  const [selectedStudentForView, setSelectedStudentForView] = useState(null);
+  const [selectedAppForEval, setSelectedAppForEval] = useState(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Resume Preview State for Officer
@@ -90,6 +166,14 @@ const DriveApplicants = () => {
       if (res.success) {
         setDrive(res.drive);
         setApplicants(res.data || []);
+
+        // If an application was opened in the evaluation modal, refresh its reference
+        if (selectedAppForEval) {
+          const updatedApp = (res.data || []).find((a) => a._id === selectedAppForEval._id);
+          if (updatedApp) {
+            setSelectedAppForEval(updatedApp);
+          }
+        }
       }
     } catch (err) {
       showError(err.message || 'Failed to fetch applicants');
@@ -181,7 +265,6 @@ const DriveApplicants = () => {
     setPreviewLoading(true);
     setPreviewError(null);
 
-    // Revoke previous blob if any
     if (previewBlobUrl) {
       window.URL.revokeObjectURL(previewBlobUrl);
       setPreviewBlobUrl(null);
@@ -247,8 +330,11 @@ const DriveApplicants = () => {
 
   const selectedCount = applicants.filter((a) => a.status === 'Selected').length;
 
+  const evalStudent = selectedAppForEval?.student;
+  const evalEligibility = evalStudent && drive ? evaluateEligibility(evalStudent, drive) : null;
+
   return (
-    <div>
+    <div style={{ paddingBottom: '3rem' }}>
       {/* Back Link */}
       <div style={{ marginBottom: '1.25rem' }}>
         <Link
@@ -303,7 +389,7 @@ const DriveApplicants = () => {
               <Building2 size={14} />
               <span>{drive?.company?.name || 'Company Recruitment Drive'}</span>
             </div>
-            <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.4rem' }}>
               {drive?.title || 'Placement Drive Applicants'}
             </h1>
             <div
@@ -312,15 +398,23 @@ const DriveApplicants = () => {
                 gap: '1rem',
                 fontSize: '0.85rem',
                 color: '#64748b',
-                marginTop: '0.35rem',
                 flexWrap: 'wrap',
               }}
             >
-              <span>Package: <strong style={{ color: '#059669' }}>{drive?.packageCTC}</strong></span>
+              <span>
+                Package: <strong style={{ color: '#059669' }}>{drive?.packageCTC}</strong>
+              </span>
               <span>•</span>
-              <span>Min CGPA: <strong>{drive?.eligibility?.minCGPA || 0}</strong></span>
+              <span>
+                Min CGPA: <strong>{drive?.eligibility?.minCGPA || 0}</strong>
+              </span>
               <span>•</span>
-              <span>Drive Date: <strong>{drive?.driveDate ? new Date(drive.driveDate).toLocaleDateString() : 'N/A'}</strong></span>
+              <span>
+                Drive Date:{' '}
+                <strong>
+                  {drive?.driveDate ? new Date(drive.driveDate).toLocaleDateString() : 'N/A'}
+                </strong>
+              </span>
             </div>
           </div>
 
@@ -363,7 +457,8 @@ const DriveApplicants = () => {
         </div>
 
         <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#334155' }}>
-          Total: {applicants.length} | Selected: <span style={{ color: '#059669' }}>{selectedCount}</span>
+          Total: {applicants.length} | Selected:{' '}
+          <span style={{ color: '#059669' }}>{selectedCount}</span>
         </div>
       </div>
 
@@ -434,7 +529,14 @@ const DriveApplicants = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                           {/* Uploaded Resume Actions */}
                           {hasUploadedResume(s) && (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                flexWrap: 'wrap',
+                              }}
+                            >
                               {isStudentPdf(s) && (
                                 <button
                                   type="button"
@@ -541,18 +643,22 @@ const DriveApplicants = () => {
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                           <button
-                            onClick={() => setSelectedStudentForView(s)}
+                            onClick={() => setSelectedAppForEval(app)}
                             className="btn btn-secondary btn-sm"
-                            title="View Full Student Academic Details"
+                            title="Evaluate Applicant Career Profile"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                           >
                             <Eye size={13} />
+                            <span>Evaluate</span>
                           </button>
                           <button
                             onClick={() => setSelectedAppForStatus(app)}
                             className="btn btn-primary btn-sm"
+                            title="Update Selection Status"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                           >
                             <Edit3 size={13} />
-                            <span>Update Status</span>
+                            <span>Status</span>
                           </button>
                         </div>
                       </td>
@@ -574,126 +680,620 @@ const DriveApplicants = () => {
         isSubmitting={isUpdatingStatus}
       />
 
-      {/* Student Academic Details View Modal */}
+      {/* Comprehensive Officer Applicant Evaluation Modal */}
       <Modal
-        isOpen={!!selectedStudentForView}
-        onClose={() => setSelectedStudentForView(null)}
-        title="Student Candidate Profile"
-        maxWidth="580px"
+        isOpen={!!selectedAppForEval}
+        onClose={() => setSelectedAppForEval(null)}
+        title={`Applicant Evaluation — ${evalStudent?.name || 'Student'} (${evalStudent?.rollNo || 'N/A'})`}
+        maxWidth="840px"
       >
-        {selectedStudentForView && (
-          <div>
-            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 800,
-                  fontSize: '1.4rem',
-                  margin: '0 auto 0.5rem',
-                }}
-              >
-                {selectedStudentForView.name?.substring(0, 2).toUpperCase()}
-              </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                {selectedStudentForView.name}
-              </h3>
-              <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-                Roll No: <strong>{selectedStudentForView.rollNo}</strong> • Branch: <strong>{selectedStudentForView.branch}</strong>
-              </p>
-            </div>
-
+        {selectedAppForEval && evalStudent && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* A. Candidate Header & Application Overview */}
             <div
               style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
-                background: '#f8fafc',
-                padding: '1rem',
-                borderRadius: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                padding: '1.25rem',
+                borderRadius: '12px',
                 border: '1px solid #e2e8f0',
-                marginBottom: '1rem',
-                fontSize: '0.875rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '1.35rem',
+                  }}
+                >
+                  {evalStudent.name?.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.2rem' }}>
+                    {evalStudent.name}
+                  </h3>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span>Roll: <strong style={{ color: '#1e293b' }}>{evalStudent.rollNo}</strong></span>
+                    <span>•</span>
+                    <span>Branch: <strong style={{ color: '#1e293b' }}>{evalStudent.branch}</strong></span>
+                    <span>•</span>
+                    <span>Email: <strong>{evalStudent.email}</strong></span>
+                    {evalStudent.phone && (
+                      <>
+                        <span>•</span>
+                        <span>Phone: <strong>{evalStudent.phone}</strong></span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+                <StatusBadge status={selectedAppForEval.status} />
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  Applied {new Date(selectedAppForEval.appliedAt).toLocaleDateString()}
+                  {selectedAppForEval.updatedAt && selectedAppForEval.updatedAt !== selectedAppForEval.appliedAt && (
+                    <span> • Updated {new Date(selectedAppForEval.updatedAt).toLocaleDateString()}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Application Status & Officer Feedback Box */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '1rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
               }}
             >
               <div>
-                <span style={{ color: '#64748b' }}>CGPA:</span>{' '}
-                <strong style={{ color: '#2563eb' }}>{selectedStudentForView.cgpa}</strong>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Current Status & Feedback
+                </div>
+                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                  {selectedAppForEval.remarks || 'No remarks recorded yet.'}
+                </div>
               </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Backlogs:</span>{' '}
-                <strong>{selectedStudentForView.activeBacklogs ?? 0}</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAppForStatus(selectedAppForEval);
+                }}
+                className="btn btn-primary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <Edit3 size={14} />
+                <span>Update Status / Feedback</span>
+              </button>
+            </div>
+
+            {/* B. Drive Eligibility Snapshot */}
+            {evalEligibility && (
+              <div
+                style={{
+                  background: evalEligibility.isEligible ? '#f0fdf4' : '#fffbeb',
+                  border: `1px solid ${evalEligibility.isEligible ? '#bbf7d0' : '#fef3c7'}`,
+                  borderRadius: '10px',
+                  padding: '1rem 1.25rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.75rem',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {evalEligibility.isEligible ? (
+                      <CheckCircle2 size={18} color="#16a34a" />
+                    ) : (
+                      <AlertCircle size={18} color="#d97706" />
+                    )}
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: '0.9rem',
+                        color: evalEligibility.isEligible ? '#166534' : '#92400e',
+                      }}
+                    >
+                      Drive Eligibility Snapshot —{' '}
+                      {evalEligibility.isEligible
+                        ? 'Candidate Meets All Criteria'
+                        : 'Criteria Evaluation Alert'}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      background: evalEligibility.isEligible ? '#dcfce7' : '#fef3c7',
+                      color: evalEligibility.isEligible ? '#15803d' : '#92400e',
+                    }}
+                  >
+                    {evalEligibility.isEligible ? 'ELIGIBLE' : 'REVIEW CRITERIA'}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                    gap: '0.75rem',
+                  }}
+                >
+                  {evalEligibility.details.map((d, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: '#ffffff',
+                        border: `1px solid ${d.passed ? '#e2e8f0' : '#fca5a5'}`,
+                        borderRadius: '6px',
+                        padding: '0.6rem 0.75rem',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{d.criteria}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
+                        <div>
+                          <strong style={{ color: '#0f172a' }}>{d.actual}</strong>{' '}
+                          <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>({d.required})</span>
+                        </div>
+                        {d.passed ? (
+                          <CheckCircle2 size={14} color="#16a34a" />
+                        ) : (
+                          <XCircle size={14} color="#dc2626" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Passing Year:</span>{' '}
-                <strong>{selectedStudentForView.passingYear || 2026}</strong>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Phone:</span>{' '}
-                <strong>{selectedStudentForView.phone || 'N/A'}</strong>
+            )}
+
+            {/* C. Academic Profile */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <GraduationCap size={16} color="#2563eb" />
+                <span>Academic Record & Performance History</span>
+              </h4>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '0.75rem',
+                  background: '#f8fafc',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>CGPA</div>
+                  <strong style={{ color: '#2563eb', fontSize: '1.1rem' }}>{evalStudent.cgpa}</strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Active Backlogs</div>
+                  <strong style={{ color: evalStudent.activeBacklogs > 0 ? '#dc2626' : '#16a34a', fontSize: '1.1rem' }}>
+                    {evalStudent.activeBacklogs ?? 0}
+                  </strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Graduation Batch</div>
+                  <strong style={{ color: '#0f172a', fontSize: '1rem' }}>{evalStudent.passingYear || 2026}</strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>10th Standard %</div>
+                  <strong style={{ color: '#0f172a' }}>
+                    {evalStudent.academicDetails?.tenthPercentage
+                      ? `${evalStudent.academicDetails.tenthPercentage}%`
+                      : 'Not recorded'}
+                  </strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>12th Standard %</div>
+                  <strong style={{ color: '#0f172a' }}>
+                    {evalStudent.academicDetails?.twelfthPercentage
+                      ? `${evalStudent.academicDetails.twelfthPercentage}%`
+                      : 'Not recorded'}
+                  </strong>
+                </div>
+                {evalStudent.academicDetails?.diplomaPercentage && (
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Diploma %</div>
+                    <strong style={{ color: '#0f172a' }}>{evalStudent.academicDetails.diplomaPercentage}%</strong>
+                  </div>
+                )}
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Current Semester</div>
+                  <strong style={{ color: '#0f172a' }}>
+                    {evalStudent.academicDetails?.currentSemester ? `Semester ${evalStudent.academicDetails.currentSemester}` : 'N/A'}
+                  </strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Gap Years</div>
+                  <strong style={{ color: '#0f172a' }}>{evalStudent.academicDetails?.gapYears ?? 0}</strong>
+                </div>
               </div>
             </div>
 
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '0.4rem', letterSpacing: '0.5px' }}>
-                Technical Skills
-              </div>
+            {/* D. Skills */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Sparkles size={16} color="#2563eb" />
+                <span>Technical Skills ({evalStudent.skills?.length || 0})</span>
+              </h4>
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {selectedStudentForView.skills && selectedStudentForView.skills.length > 0 ? (
-                  selectedStudentForView.skills.map((sk, i) => (
+                {evalStudent.skills && evalStudent.skills.length > 0 ? (
+                  evalStudent.skills.map((sk, i) => (
                     <span
                       key={i}
                       style={{
                         background: '#eff6ff',
                         color: '#1d4ed8',
-                        padding: '0.2rem 0.6rem',
+                        padding: '0.3rem 0.75rem',
                         borderRadius: '6px',
-                        fontSize: '0.8rem',
+                        fontSize: '0.825rem',
                         fontWeight: 600,
+                        border: '1px solid #bfdbfe',
                       }}
                     >
                       {sk}
                     </span>
                   ))
                 ) : (
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No skills listed</span>
+                  <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>No technical skills specified by candidate.</span>
                 )}
               </div>
             </div>
 
-            {/* Resume & Portfolio Documents Section */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div
+            {/* E. Projects Portfolio */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
                 style={{
-                  fontSize: '0.8rem',
+                  fontSize: '0.85rem',
                   fontWeight: 700,
-                  color: '#64748b',
+                  color: '#1e293b',
                   textTransform: 'uppercase',
-                  marginBottom: '0.5rem',
                   letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
               >
-                Resume & Portfolio Documents
-              </div>
+                <FolderGit2 size={16} color="#2563eb" />
+                <span>Projects Portfolio ({evalStudent.projects?.length || 0})</span>
+              </h4>
 
-              {/* Case A & C: Uploaded Resume */}
-              {hasUploadedResume(selectedStudentForView) && (
+              {evalStudent.projects && evalStudent.projects.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {evalStudent.projects.map((proj, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '0.85rem 1rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{proj.title}</strong>
+                        {proj.link && (
+                          <a
+                            href={proj.link}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              fontSize: '0.75rem',
+                              color: '#2563eb',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <span>Visit Project</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
+                      {proj.description && (
+                        <p style={{ fontSize: '0.825rem', color: '#475569', margin: '0.35rem 0' }}>
+                          {proj.description}
+                        </p>
+                      )}
+                      {proj.techStack && proj.techStack.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.4rem' }}>
+                          {(Array.isArray(proj.techStack) ? proj.techStack : proj.techStack.split(',')).map((tech, tIdx) => (
+                            <span
+                              key={tIdx}
+                              style={{
+                                fontSize: '0.725rem',
+                                background: '#e2e8f0',
+                                color: '#334155',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                fontWeight: 500,
+                              }}
+                            >
+                              {tech.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                  No technical projects listed.
+                </div>
+              )}
+            </div>
+
+            {/* F. Certifications */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Award size={16} color="#2563eb" />
+                <span>Certifications & Honors ({evalStudent.certifications?.length || 0})</span>
+              </h4>
+
+              {evalStudent.certifications && evalStudent.certifications.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {evalStudent.certifications.map((cert, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '0.85rem 1rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem',
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{cert.name}</strong>
+                        <div style={{ fontSize: '0.775rem', color: '#64748b', marginTop: '0.15rem' }}>
+                          {cert.issuer && <span>Issued by: {cert.issuer}</span>}
+                          {cert.issueDate && <span> • {cert.issueDate}</span>}
+                        </div>
+                      </div>
+                      {cert.certificateUrl && (
+                        <a
+                          href={cert.certificateUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary btn-sm"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}
+                        >
+                          <ExternalLink size={12} />
+                          <span>Verify</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                  No certifications listed.
+                </div>
+              )}
+            </div>
+
+            {/* G. Professional Links */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Globe size={16} color="#2563eb" />
+                <span>Professional Links</span>
+              </h4>
+
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {evalStudent.links?.github && (
+                  <a
+                    href={evalStudent.links.github}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Github size={15} />
+                    <span>GitHub Profile</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+
+                {evalStudent.links?.linkedin && (
+                  <a
+                    href={evalStudent.links.linkedin}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Linkedin size={15} />
+                    <span>LinkedIn Profile</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+
+                {evalStudent.links?.portfolio && (
+                  <a
+                    href={evalStudent.links.portfolio}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Globe size={15} />
+                    <span>Portfolio Website</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+
+                {!evalStudent.links?.github &&
+                  !evalStudent.links?.linkedin &&
+                  !evalStudent.links?.portfolio && (
+                    <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                      No professional profiles linked.
+                    </span>
+                  )}
+              </div>
+            </div>
+
+            {/* H. Resume Documents */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '1.25rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <FileText size={16} color="#2563eb" />
+                <span>Resume Documents Vault</span>
+              </h4>
+
+              {/* Uploaded Resume */}
+              {hasUploadedResume(evalStudent) && (
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '0.75rem 1rem',
-                    background: '#ffffff',
+                    background: '#f8fafc',
                     border: '1px solid #cbd5e1',
                     borderRadius: '8px',
-                    marginBottom: selectedStudentForView.resumeUrl ? '0.6rem' : '0',
+                    marginBottom: evalStudent.resumeUrl ? '0.6rem' : '0',
                     gap: '0.75rem',
                     flexWrap: 'wrap',
                   }}
@@ -704,8 +1304,8 @@ const DriveApplicants = () => {
                         width: '36px',
                         height: '36px',
                         borderRadius: '8px',
-                        background: isStudentPdf(selectedStudentForView) ? '#eff6ff' : '#f0fdf4',
-                        color: isStudentPdf(selectedStudentForView) ? '#2563eb' : '#059669',
+                        background: isStudentPdf(evalStudent) ? '#eff6ff' : '#f0fdf4',
+                        color: isStudentPdf(evalStudent) ? '#2563eb' : '#059669',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -715,17 +1315,25 @@ const DriveApplicants = () => {
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                        {selectedStudentForView.resumeFile.originalName || 'Uploaded Resume Document'}
+                        {evalStudent.resumeFile.originalName || 'Uploaded Resume Document'}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <span>{formatFileSize(selectedStudentForView.resumeFile.size)}</span>
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#64748b',
+                          display: 'flex',
+                          gap: '0.4rem',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span>{formatFileSize(evalStudent.resumeFile.size)}</span>
                         <span>•</span>
                         <span>
-                          {selectedStudentForView.resumeFile.uploadedAt
-                            ? `Uploaded ${new Date(selectedStudentForView.resumeFile.uploadedAt).toLocaleDateString()}`
+                          {evalStudent.resumeFile.uploadedAt
+                            ? `Uploaded ${new Date(evalStudent.resumeFile.uploadedAt).toLocaleDateString()}`
                             : 'Uploaded File'}
                         </span>
-                        {!isStudentPdf(selectedStudentForView) && (
+                        {!isStudentPdf(evalStudent) && (
                           <span style={{ color: '#6366f1', fontWeight: 500 }}>
                             (DOC/DOCX • Download only)
                           </span>
@@ -735,10 +1343,10 @@ const DriveApplicants = () => {
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    {isStudentPdf(selectedStudentForView) && (
+                    {isStudentPdf(evalStudent) && (
                       <button
                         type="button"
-                        onClick={() => handleOpenPreview(selectedStudentForView)}
+                        onClick={() => handleOpenPreview(evalStudent)}
                         className="btn btn-secondary btn-sm"
                         style={{
                           display: 'flex',
@@ -750,14 +1358,14 @@ const DriveApplicants = () => {
                         }}
                       >
                         <Eye size={14} />
-                        <span>Preview</span>
+                        <span>Preview PDF</span>
                       </button>
                     )}
 
                     <button
                       type="button"
-                      onClick={() => handleDownloadResume(selectedStudentForView)}
-                      disabled={downloadingStudentId === selectedStudentForView._id}
+                      onClick={() => handleDownloadResume(evalStudent)}
+                      disabled={downloadingStudentId === evalStudent._id}
                       className="btn btn-primary btn-sm"
                       style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                     >
@@ -768,15 +1376,15 @@ const DriveApplicants = () => {
                 </div>
               )}
 
-              {/* Case B & C: External Resume Link */}
-              {selectedStudentForView.resumeUrl && (
+              {/* External Resume URL */}
+              {evalStudent.resumeUrl && (
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '0.75rem 1rem',
-                    background: '#ffffff',
+                    background: '#f8fafc',
                     border: '1px solid #cbd5e1',
                     borderRadius: '8px',
                     gap: '0.75rem',
@@ -789,7 +1397,7 @@ const DriveApplicants = () => {
                         width: '36px',
                         height: '36px',
                         borderRadius: '8px',
-                        background: '#f8fafc',
+                        background: '#f1f5f9',
                         color: '#475569',
                         display: 'flex',
                         alignItems: 'center',
@@ -800,26 +1408,26 @@ const DriveApplicants = () => {
                     </div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                        External Resume / Portfolio Link
+                        External Resume Link
                       </div>
                       <div
                         style={{
                           fontSize: '0.75rem',
                           color: '#2563eb',
-                          maxWidth: '260px',
+                          maxWidth: '280px',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}
-                        title={selectedStudentForView.resumeUrl}
+                        title={evalStudent.resumeUrl}
                       >
-                        {selectedStudentForView.resumeUrl}
+                        {evalStudent.resumeUrl}
                       </div>
                     </div>
                   </div>
 
                   <a
-                    href={selectedStudentForView.resumeUrl}
+                    href={evalStudent.resumeUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-secondary btn-sm"
@@ -831,8 +1439,8 @@ const DriveApplicants = () => {
                 </div>
               )}
 
-              {/* Case D: Neither */}
-              {!hasUploadedResume(selectedStudentForView) && !selectedStudentForView.resumeUrl && (
+              {/* Neither */}
+              {!hasUploadedResume(evalStudent) && !evalStudent.resumeUrl && (
                 <div
                   style={{
                     padding: '0.85rem 1rem',
@@ -844,22 +1452,34 @@ const DriveApplicants = () => {
                     textAlign: 'center',
                   }}
                 >
-                  No resume available for this candidate
+                  No resume documents available for this candidate.
                 </div>
               )}
             </div>
 
+            {/* Modal Footer */}
             <div
               className="modal-footer"
-              style={{ margin: '1rem -1.5rem -1.5rem', padding: '1rem 1.5rem' }}
+              style={{
+                margin: '0.5rem -1.5rem -1.5rem',
+                padding: '1rem 1.5rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
             >
-              <button
-                type="button"
-                onClick={() => setSelectedStudentForView(null)}
-                className="btn btn-secondary"
-              >
-                Close
-              </button>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                Officer Evaluation Mode • Read-only Career Record
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAppForEval(null)}
+                  className="btn btn-secondary"
+                >
+                  Close Evaluation
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -871,6 +1491,7 @@ const DriveApplicants = () => {
         onClose={handleClosePreview}
         title={`Resume Preview — ${previewStudent?.name || 'Student Candidate'} (${previewStudent?.resumeFile?.originalName || 'Resume.pdf'})`}
         maxWidth="880px"
+        zIndex={250}
       >
         <div>
           {previewLoading && (
