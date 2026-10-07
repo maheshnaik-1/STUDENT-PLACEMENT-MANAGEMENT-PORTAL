@@ -3,6 +3,7 @@ const PlacementDrive = require('../models/PlacementDrive');
 const Company = require('../models/Company');
 const User = require('../models/User');
 const { checkStudentEligibility } = require('./driveController');
+const { createNotification } = require('./notificationController');
 
 /**
  * @desc    Apply for a placement drive (with strict eligibility & duplicate checks)
@@ -79,6 +80,46 @@ const applyForDrive = async (req, res, next) => {
         populate: { path: 'company', select: 'name logoUrl location' },
       })
       .populate('student', 'name email rollNo branch cgpa');
+
+    // 7. Trigger Automatic Notifications
+    // A. Student Notification
+    await createNotification({
+      recipient: studentId,
+      role: 'student',
+      title: 'Application Submitted',
+      message: `Your application for ${drive.company?.name || 'Company'} - ${drive.title} has been successfully submitted.`,
+      type: 'APPLICATION_SUBMITTED',
+      relatedEntity: application._id,
+      relatedEntityType: 'Application',
+      link: '/student/applications',
+      metadata: {
+        driveId: drive._id,
+        companyName: drive.company?.name,
+        jobTitle: drive.title,
+      },
+    });
+
+    // B. Officer Notifications
+    const officers = await User.find({ role: 'officer' }).select('_id');
+    for (const officer of officers) {
+      await createNotification({
+        recipient: officer._id,
+        role: 'officer',
+        title: 'New Application Received',
+        message: `${student.name} (${student.rollNo || student.branch}) applied for ${drive.company?.name || 'Company'} - ${drive.title}.`,
+        type: 'APPLICATION_SUBMITTED',
+        relatedEntity: application._id,
+        relatedEntityType: 'Application',
+        link: `/officer/drives/${drive._id}/applicants`,
+        metadata: {
+          driveId: drive._id,
+          studentId: student._id,
+          studentName: student.name,
+          companyName: drive.company?.name,
+          jobTitle: drive.title,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -213,6 +254,9 @@ const updateApplicationStatus = async (req, res, next) => {
       });
     }
 
+    const previousStatus = application.status;
+    const isStatusChanged = Boolean(status && status !== previousStatus);
+
     if (status) application.status = status;
     if (remarks !== undefined) application.remarks = remarks;
     application.updatedAt = new Date();
@@ -225,6 +269,60 @@ const updateApplicationStatus = async (req, res, next) => {
         path: 'drive',
         populate: { path: 'company', select: 'name' },
       });
+
+    // Automatic Notification for Student on Status Change (Idempotency Protected)
+    if (isStatusChanged && populatedApp) {
+      const companyName = populatedApp.drive?.company?.name || 'Company';
+      const driveTitle = populatedApp.drive?.title || 'Placement Drive';
+      const cleanRemarks = (remarks !== undefined && remarks.trim()) ? remarks.trim() : (application.remarks || '');
+
+      let notifType = 'APPLICATION_STATUS_CHANGED';
+      let notifTitle = 'Application Status Updated';
+      let notifMessage = `Your application status for ${companyName} (${driveTitle}) is now '${status}'.`;
+
+      if (status === 'Shortlisted') {
+        notifType = 'SHORTLISTED';
+        notifTitle = 'Application Shortlisted';
+        notifMessage = `Your application for ${companyName} (${driveTitle}) has been shortlisted.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      } else if (status === 'Technical Round') {
+        notifType = 'TECHNICAL_ROUND';
+        notifTitle = 'Technical Round Scheduled';
+        notifMessage = `Your application for ${companyName} (${driveTitle}) has progressed to the Technical Round.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      } else if (status === 'Interview') {
+        notifType = 'INTERVIEW';
+        notifTitle = 'Interview Scheduled';
+        notifMessage = `Your application for ${companyName} (${driveTitle}) has progressed to the Interview stage.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      } else if (status === 'Selected') {
+        notifType = 'SELECTED';
+        notifTitle = 'Congratulations! You are Selected';
+        notifMessage = `Congratulations! You have been selected for ${companyName} (${driveTitle}).${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      } else if (status === 'Rejected') {
+        notifType = 'REJECTED';
+        notifTitle = 'Application Update';
+        notifMessage = `Your application for ${companyName} (${driveTitle}) was not selected.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      } else {
+        notifMessage = `Your application status for ${companyName} (${driveTitle}) is now '${status}'.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+      }
+
+      await createNotification({
+        recipient: application.student,
+        role: 'student',
+        title: notifTitle,
+        message: notifMessage,
+        type: notifType,
+        relatedEntity: application._id,
+        relatedEntityType: 'Application',
+        link: '/student/applications',
+        metadata: {
+          driveId: populatedApp.drive?._id,
+          companyName,
+          jobTitle: driveTitle,
+          previousStatus,
+          newStatus: status,
+          remarks: cleanRemarks,
+        },
+      });
+    }
 
     res.status(200).json({
       success: true,

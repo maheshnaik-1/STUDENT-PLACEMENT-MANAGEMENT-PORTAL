@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 import {
   GraduationCap,
   LayoutDashboard,
@@ -171,6 +172,7 @@ const Navbar = () => {
             {/* Authenticated User Menu */}
             {isAuthenticated && (
               <li style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: '0.5rem' }}>
+                <NotificationBell />
                 <div className="user-badge">
                   <span>{user.name.split(' ')[0]}</span>
                   <span className={`role-pill ${user.role}`}>

@@ -10,12 +10,16 @@ import {
   Lock,
   ArrowRight,
   Zap,
+  Eye,
+  EyeOff,
+  Info,
 } from 'lucide-react';
 
 const Login = () => {
   const [role, setRole] = useState('student'); // 'student' or 'officer'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -33,14 +37,32 @@ const Login = () => {
     setErrorMsg('');
     setSubmitting(true);
 
+    // Normalize email (trim whitespace & lowercase)
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Password is sent EXACTLY as entered (no trim, no lowercase)
     try {
-      await login(email, password, role);
-      showSuccess(`Welcome back! Successfully logged in as ${role}.`);
+      await login(normalizedEmail, password, role);
+      showSuccess(`Welcome back! Successfully logged in as ${role === 'officer' ? 'Placement Officer' : 'Student'}.`);
       navigate(role === 'officer' ? '/officer/dashboard' : '/student/dashboard', {
         replace: true,
       });
     } catch (err) {
-      const msg = err.message || 'Invalid email or password';
+      let msg = err.message || 'Invalid email or password';
+
+      // Clear role mismatch guidance
+      if (
+        msg.toLowerCase().includes('placement officer portal') ||
+        (role === 'student' && msg.includes('Placement Officer'))
+      ) {
+        msg = 'These credentials belong to the Placement Officer portal. Please select Placement Officer.';
+      } else if (
+        msg.toLowerCase().includes('student portal') ||
+        (role === 'officer' && msg.includes('Student'))
+      ) {
+        msg = 'These credentials belong to the Student portal. Please select Student.';
+      }
+
       setErrorMsg(msg);
       showError(msg);
     } finally {
@@ -174,41 +196,76 @@ const Login = () => {
                 borderRadius: '8px',
                 fontSize: '0.875rem',
                 marginBottom: '1.25rem',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.5rem',
+                lineHeight: '1.4',
               }}
             >
-              {errorMsg}
+              <Info size={18} style={{ minWidth: '18px', marginTop: '2px' }} />
+              <span>{errorMsg}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">
+              <label className="form-label" htmlFor="login-email">
                 {role === 'officer' ? 'Officer Email' : 'Student College Email'}
               </label>
               <input
+                id="login-email"
                 type="email"
                 required
                 className="form-control"
                 placeholder={
                   role === 'officer'
                     ? 'officer@college.edu'
-                    : 'your.name@college.edu'
+                    : 'rahul.cse@college.edu'
                 }
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Account Password</label>
-              <input
-                type="password"
-                required
-                className="form-control"
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <label className="form-label" htmlFor="login-password">
+                Account Password
+              </label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="form-control"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={{ paddingRight: '2.75rem' }}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: '0.75rem',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0.25rem',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -249,7 +306,7 @@ const Login = () => {
               <span>Quick Sign-In Accounts:</span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <button
                 type="button"
                 onClick={() =>
@@ -262,20 +319,25 @@ const Login = () => {
                 style={{
                   background: '#ffffff',
                   border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  padding: '0.4rem 0.65rem',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
                   fontSize: '0.8rem',
-                  fontWeight: 600,
                   color: '#334155',
                   cursor: 'pointer',
                   textAlign: 'left',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <span>🔑 Placement Officer (Dr. Sharma)</span>
-                <span style={{ color: '#2563eb', fontSize: '0.75rem' }}>Autofill</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>🔑 Placement Officer (Dr. Sharma)</div>
+                  <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                    officer@college.edu &bull; Password: <strong>Officer@123</strong>
+                  </div>
+                </div>
+                <span style={{ color: '#2563eb', fontSize: '0.75rem', fontWeight: 600 }}>Autofill</span>
               </button>
 
               <button
@@ -290,20 +352,25 @@ const Login = () => {
                 style={{
                   background: '#ffffff',
                   border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  padding: '0.4rem 0.65rem',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
                   fontSize: '0.8rem',
-                  fontWeight: 600,
                   color: '#334155',
                   cursor: 'pointer',
                   textAlign: 'left',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <span>🎓 Student: Rahul (CSE, 8.85 CGPA)</span>
-                <span style={{ color: '#2563eb', fontSize: '0.75rem' }}>Autofill</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>🎓 Student: Rahul (CSE, 8.85 CGPA)</div>
+                  <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                    rahul.cse@college.edu &bull; Password: <strong>Student@123</strong>
+                  </div>
+                </div>
+                <span style={{ color: '#2563eb', fontSize: '0.75rem', fontWeight: 600 }}>Autofill</span>
               </button>
 
               <button
@@ -318,21 +385,38 @@ const Login = () => {
                 style={{
                   background: '#ffffff',
                   border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  padding: '0.4rem 0.65rem',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
                   fontSize: '0.8rem',
-                  fontWeight: 600,
                   color: '#334155',
                   cursor: 'pointer',
                   textAlign: 'left',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <span>🎓 Student: Arjun (ECE, 6.40 CGPA, 1 Backlog)</span>
-                <span style={{ color: '#2563eb', fontSize: '0.75rem' }}>Autofill</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>🎓 Student: Arjun (ECE, 6.40 CGPA)</div>
+                  <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                    arjun.ece@college.edu &bull; Password: <strong>Student@123</strong>
+                  </div>
+                </div>
+                <span style={{ color: '#2563eb', fontSize: '0.75rem', fontWeight: 600 }}>Autofill</span>
               </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: '0.65rem',
+                fontSize: '0.725rem',
+                color: '#64748b',
+                fontStyle: 'italic',
+                textAlign: 'center',
+              }}
+            >
+              Note: Passwords are case-sensitive.
             </div>
           </div>
 

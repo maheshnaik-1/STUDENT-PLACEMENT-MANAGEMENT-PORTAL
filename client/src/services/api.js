@@ -180,4 +180,20 @@ export const api = {
     },
     getById: (id) => request(`/students/${id}`),
   },
+
+  // Notification APIs
+  notifications: {
+    getAll: (params = {}) => {
+      return request(`/notifications${buildQuery(params)}`);
+    },
+    getUnreadCount: () => request('/notifications/unread-count'),
+    markAsRead: (id) =>
+      request(`/notifications/${id}/read`, {
+        method: 'PUT',
+      }),
+    markAllAsRead: () =>
+      request('/notifications/read-all', {
+        method: 'PUT',
+      }),
+  },
 };

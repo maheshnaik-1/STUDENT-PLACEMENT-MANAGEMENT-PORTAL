@@ -46,6 +46,7 @@ app.use('/api/companies', require('./routes/companyRoutes'));
 app.use('/api/drives', require('./routes/driveRoutes'));
 app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/students', require('./routes/studentRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // 404 handler for undefined API routes
 app.use('/api/*', (req, res) => {
