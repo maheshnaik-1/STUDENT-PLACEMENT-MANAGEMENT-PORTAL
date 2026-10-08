@@ -32,15 +32,7 @@ const applyForDrive = async (req, res, next) => {
       });
     }
 
-    // 3. Check application deadline
-    if (new Date() > new Date(drive.deadline)) {
-      return res.status(400).json({
-        success: false,
-        message: `Application deadline was on ${new Date(drive.deadline).toLocaleDateString()}. Submissions are closed.`,
-      });
-    }
-
-    // 4. Check if student has already applied (Duplicate Prevention)
+    // 3. Check if student has already applied (Duplicate Prevention)
     const existingApplication = await Application.findOne({
       drive: driveId,
       student: studentId,
@@ -50,6 +42,14 @@ const applyForDrive = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: `You have already applied for ${drive.company.name} - ${drive.title}. Current status: ${existingApplication.status}`,
+      });
+    }
+
+    // 4. Check application deadline
+    if (new Date() > new Date(drive.deadline)) {
+      return res.status(400).json({
+        success: false,
+        message: `Application deadline was on ${new Date(drive.deadline).toLocaleDateString()}. Submissions are closed.`,
       });
     }
 
@@ -66,12 +66,21 @@ const applyForDrive = async (req, res, next) => {
     }
 
     // 6. Create Application
+    const submissionRemarks = 'Application submitted successfully. Under review.';
     const application = await Application.create({
       drive: driveId,
       student: studentId,
       appliedAt: new Date(),
       status: 'Applied',
-      remarks: 'Application submitted successfully. Under review.',
+      remarks: submissionRemarks,
+      statusHistory: [
+        {
+          status: 'Applied',
+          remarks: submissionRemarks,
+          changedBy: studentId,
+          changedAt: new Date(),
+        },
+      ],
     });
 
     const populatedApp = await Application.findById(application._id)
@@ -261,6 +270,16 @@ const updateApplicationStatus = async (req, res, next) => {
     if (remarks !== undefined) application.remarks = remarks;
     application.updatedAt = new Date();
 
+    if (isStatusChanged) {
+      if (!application.statusHistory) application.statusHistory = [];
+      application.statusHistory.push({
+        status,
+        remarks: remarks !== undefined ? remarks : (application.remarks || ''),
+        changedBy: req.user._id,
+        changedAt: new Date(),
+      });
+    }
+
     await application.save();
 
     const populatedApp = await Application.findById(application._id)
@@ -328,6 +347,182 @@ const updateApplicationStatus = async (req, res, next) => {
       success: true,
       message: `Applicant status updated to '${application.status}'`,
       data: populatedApp,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Bulk update applicants' selection status and remarks for a drive
+ * @route   PUT /api/applications/bulk-status
+ * @access  Private (Officer only)
+ */
+const bulkUpdateApplicationStatus = async (req, res, next) => {
+  try {
+    const { driveId, applicationIds, status, remarks } = req.body;
+
+    if (!driveId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Placement drive ID is required for bulk status updates',
+      });
+    }
+
+    if (!Array.isArray(applicationIds) || applicationIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a non-empty list of application IDs to update',
+      });
+    }
+
+    if (applicationIds.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bulk status update batch size cannot exceed 100 applications',
+      });
+    }
+
+    const validStatuses = [
+      'Applied',
+      'Shortlisted',
+      'Technical Round',
+      'Interview',
+      'Selected',
+      'Rejected',
+    ];
+
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    const drive = await PlacementDrive.findById(driveId).populate('company', 'name');
+    if (!drive) {
+      return res.status(404).json({
+        success: false,
+        message: 'Placement drive not found',
+      });
+    }
+
+    const companyName = drive.company?.name || 'Company';
+    const driveTitle = drive.title || 'Placement Drive';
+
+    // Find all applications belonging strictly to this drive
+    const applications = await Application.find({
+      _id: { $in: applicationIds },
+      drive: driveId,
+    }).populate('student', 'name email rollNo branch');
+
+    const foundIdMap = new Map();
+    applications.forEach((app) => foundIdMap.set(app._id.toString(), app));
+
+    const updated = [];
+    const skipped = [];
+
+    for (const id of applicationIds) {
+      const app = foundIdMap.get(id?.toString());
+      if (!app) {
+        skipped.push({
+          id,
+          reason: 'Application not found or does not belong to the specified drive',
+        });
+        continue;
+      }
+
+      const previousStatus = app.status;
+      const isStatusChanged = Boolean(status && status !== previousStatus);
+
+      app.status = status;
+      if (remarks !== undefined) {
+        app.remarks = remarks;
+      }
+      app.updatedAt = new Date();
+
+      if (isStatusChanged) {
+        if (!app.statusHistory) app.statusHistory = [];
+        app.statusHistory.push({
+          status,
+          remarks: remarks !== undefined ? remarks : (app.remarks || ''),
+          changedBy: req.user._id,
+          changedAt: new Date(),
+        });
+      }
+
+      await app.save();
+
+      // Trigger notification if status actually changed
+      if (isStatusChanged && app.student) {
+        const cleanRemarks = (remarks !== undefined && remarks.trim()) ? remarks.trim() : (app.remarks || '');
+        let notifType = 'APPLICATION_STATUS_CHANGED';
+        let notifTitle = 'Application Status Updated';
+        let notifMessage = `Your application status for ${companyName} (${driveTitle}) is now '${status}'.`;
+
+        if (status === 'Shortlisted') {
+          notifType = 'SHORTLISTED';
+          notifTitle = 'Application Shortlisted';
+          notifMessage = `Your application for ${companyName} (${driveTitle}) has been shortlisted.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        } else if (status === 'Technical Round') {
+          notifType = 'TECHNICAL_ROUND';
+          notifTitle = 'Technical Round Scheduled';
+          notifMessage = `Your application for ${companyName} (${driveTitle}) has progressed to the Technical Round.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        } else if (status === 'Interview') {
+          notifType = 'INTERVIEW';
+          notifTitle = 'Interview Scheduled';
+          notifMessage = `Your application for ${companyName} (${driveTitle}) has progressed to the Interview stage.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        } else if (status === 'Selected') {
+          notifType = 'SELECTED';
+          notifTitle = 'Congratulations! You are Selected';
+          notifMessage = `Congratulations! You have been selected for ${companyName} (${driveTitle}).${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        } else if (status === 'Rejected') {
+          notifType = 'REJECTED';
+          notifTitle = 'Application Update';
+          notifMessage = `Your application for ${companyName} (${driveTitle}) was not selected.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        } else {
+          notifMessage = `Your application status for ${companyName} (${driveTitle}) is now '${status}'.${cleanRemarks ? ` Remarks: "${cleanRemarks}"` : ''}`;
+        }
+
+        await createNotification({
+          recipient: app.student._id || app.student,
+          role: 'student',
+          title: notifTitle,
+          message: notifMessage,
+          type: notifType,
+          relatedEntity: app._id,
+          relatedEntityType: 'Application',
+          link: '/student/applications',
+          metadata: {
+            driveId: drive._id,
+            companyName,
+            jobTitle: driveTitle,
+            previousStatus,
+            newStatus: status,
+            remarks: cleanRemarks,
+          },
+        });
+      }
+
+      updated.push({
+        id: app._id,
+        studentName: app.student?.name,
+        rollNo: app.student?.rollNo,
+        previousStatus,
+        newStatus: status,
+        statusChanged: isStatusChanged,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Bulk update complete: ${updated.length} updated, ${skipped.length} skipped`,
+      updatedCount: updated.length,
+      skippedCount: skipped.length,
+      data: {
+        updated,
+        skipped,
+      },
     });
   } catch (error) {
     next(error);
@@ -808,6 +1003,7 @@ module.exports = {
   getMyApplications,
   getDriveApplicants,
   updateApplicationStatus,
+  bulkUpdateApplicationStatus,
   getPlacementStats,
   getOfficerAnalytics,
 };

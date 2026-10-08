@@ -1,5 +1,36 @@
 const mongoose = require('mongoose');
 
+const statusHistorySchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: [
+        'Applied',
+        'Shortlisted',
+        'Technical Round',
+        'Interview',
+        'Selected',
+        'Rejected',
+      ],
+      required: true,
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const applicationSchema = new mongoose.Schema(
   {
     drive: {
@@ -33,6 +64,7 @@ const applicationSchema = new mongoose.Schema(
       trim: true,
       default: 'Application submitted successfully.',
     },
+    statusHistory: [statusHistorySchema],
   },
   {
     timestamps: true,

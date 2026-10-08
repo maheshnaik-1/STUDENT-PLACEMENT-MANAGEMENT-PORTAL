@@ -167,6 +167,11 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(statusData),
       }),
+    bulkUpdateStatus: (bulkData) =>
+      request('/applications/bulk-status', {
+        method: 'PUT',
+        body: JSON.stringify(bulkData),
+      }),
     getStats: () => request('/applications/stats'),
     getAnalytics: (params = {}) => {
       return request(`/applications/analytics${buildQuery(params)}`);

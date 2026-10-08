@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import StatusUpdateModal from '../../components/officer/StatusUpdateModal';
+import BulkStatusUpdateModal from '../../components/officer/BulkStatusUpdateModal';
 import Modal from '../../components/common/Modal';
 import {
   Users,
@@ -34,6 +35,8 @@ import {
   Clock,
   Sparkles,
   User,
+  RotateCcw,
+  CheckSquare,
 } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -44,6 +47,33 @@ const STATUS_FILTERS = [
   'Interview',
   'Selected',
   'Rejected',
+];
+
+const BRANCH_OPTIONS = [
+  'ALL',
+  'CSE',
+  'IT',
+  'ECE',
+  'EEE',
+  'MECH',
+  'CIVIL',
+  'AI&DS',
+];
+
+const CGPA_OPTIONS = [
+  { value: 'ALL', label: 'All CGPA' },
+  { value: '6.0', label: '≥ 6.0 CGPA' },
+  { value: '7.0', label: '≥ 7.0 CGPA' },
+  { value: '7.5', label: '≥ 7.5 CGPA' },
+  { value: '8.0', label: '≥ 8.0 CGPA' },
+  { value: '8.5', label: '≥ 8.5 CGPA' },
+  { value: '9.0', label: '≥ 9.0 CGPA' },
+];
+
+const ELIGIBILITY_OPTIONS = [
+  { value: 'ALL', label: 'All Eligibility' },
+  { value: 'ELIGIBLE', label: 'Eligible Only' },
+  { value: 'INELIGIBLE', label: 'Ineligible Only' },
 ];
 
 const formatFileSize = (bytes) => {
@@ -140,12 +170,21 @@ const DriveApplicants = () => {
   const [drive, setDrive] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Advanced Filters State
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [branchFilter, setBranchFilter] = useState('ALL');
+  const [cgpaFilter, setCgpaFilter] = useState('ALL');
+  const [eligibilityFilter, setEligibilityFilter] = useState('ALL');
 
+  // Selection & Modal States
+  const [selectedAppIds, setSelectedAppIds] = useState(new Set());
   const [selectedAppForStatus, setSelectedAppForStatus] = useState(null);
   const [selectedAppForEval, setSelectedAppForEval] = useState(null);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // Resume Preview State for Officer
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -158,10 +197,7 @@ const DriveApplicants = () => {
   const fetchApplicants = async () => {
     try {
       setLoading(true);
-      const res = await api.applications.getDriveApplicants(driveId, {
-        status: statusFilter,
-        search,
-      });
+      const res = await api.applications.getDriveApplicants(driveId);
 
       if (res.success) {
         setDrive(res.drive);
@@ -184,7 +220,96 @@ const DriveApplicants = () => {
 
   useEffect(() => {
     fetchApplicants();
-  }, [driveId, statusFilter, search]);
+    setSelectedAppIds(new Set());
+  }, [driveId]);
+
+  // Compute Filtered Applicants
+  const filteredApplicants = applicants.filter((app) => {
+    const s = app.student || {};
+
+    // 1. Status Filter
+    if (statusFilter !== 'ALL' && app.status !== statusFilter) return false;
+
+    // 2. Branch Filter
+    if (branchFilter !== 'ALL' && s.branch !== branchFilter) return false;
+
+    // 3. Minimum CGPA Filter
+    if (cgpaFilter !== 'ALL') {
+      const minCgpa = parseFloat(cgpaFilter);
+      const studentCgpa = parseFloat(s.cgpa) || 0;
+      if (!isNaN(minCgpa) && studentCgpa < minCgpa) return false;
+    }
+
+    // 4. Eligibility Filter (uses canonical evaluateEligibility source of truth)
+    if (eligibilityFilter !== 'ALL') {
+      const evalResult = evaluateEligibility(s, drive);
+      if (eligibilityFilter === 'ELIGIBLE' && !evalResult.isEligible) return false;
+      if (eligibilityFilter === 'INELIGIBLE' && evalResult.isEligible) return false;
+    }
+
+    // 5. Multi-field Search (Name, Roll No, Email, Branch, Technical Skills)
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      const nameMatch = (s.name || '').toLowerCase().includes(q);
+      const rollMatch = (s.rollNo || '').toLowerCase().includes(q);
+      const emailMatch = (s.email || '').toLowerCase().includes(q);
+      const branchMatch = (s.branch || '').toLowerCase().includes(q);
+      const skillsMatch = Array.isArray(s.skills)
+        ? s.skills.some((sk) => sk.toLowerCase().includes(q))
+        : typeof s.skills === 'string'
+        ? s.skills.toLowerCase().includes(q)
+        : false;
+
+      if (!nameMatch && !rollMatch && !emailMatch && !branchMatch && !skillsMatch) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const activeFilterCount =
+    (statusFilter !== 'ALL' ? 1 : 0) +
+    (branchFilter !== 'ALL' ? 1 : 0) +
+    (cgpaFilter !== 'ALL' ? 1 : 0) +
+    (eligibilityFilter !== 'ALL' ? 1 : 0) +
+    (search.trim() ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setStatusFilter('ALL');
+    setBranchFilter('ALL');
+    setCgpaFilter('ALL');
+    setEligibilityFilter('ALL');
+    setSearch('');
+  };
+
+  // Selection Management
+  const isAllSelected =
+    filteredApplicants.length > 0 &&
+    filteredApplicants.every((a) => selectedAppIds.has(a._id));
+
+  const isSomeSelected =
+    filteredApplicants.some((a) => selectedAppIds.has(a._id)) && !isAllSelected;
+
+  const handleToggleSelectAll = () => {
+    const next = new Set(selectedAppIds);
+    if (isAllSelected) {
+      filteredApplicants.forEach((a) => next.delete(a._id));
+    } else {
+      filteredApplicants.forEach((a) => next.add(a._id));
+    }
+    setSelectedAppIds(next);
+  };
+
+  const handleToggleSelectRow = (appId) => {
+    const next = new Set(selectedAppIds);
+    if (next.has(appId)) {
+      next.delete(appId);
+    } else {
+      next.add(appId);
+    }
+    setSelectedAppIds(next);
+  };
 
   const handleStatusUpdate = async ({ status, remarks }) => {
     if (!selectedAppForStatus) return;
@@ -207,10 +332,34 @@ const DriveApplicants = () => {
     }
   };
 
-  // Export Applicants to CSV
+  const handleBulkStatusSubmit = async ({ status, remarks }) => {
+    if (selectedAppIds.size === 0) return;
+    try {
+      setIsBulkUpdating(true);
+      const res = await api.applications.bulkUpdateStatus({
+        driveId,
+        applicationIds: Array.from(selectedAppIds),
+        status,
+        remarks,
+      });
+
+      if (res.success) {
+        showSuccess(res.message || 'Bulk status update completed successfully!');
+        setSelectedAppIds(new Set());
+        setBulkModalOpen(false);
+        fetchApplicants();
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to execute bulk status update');
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  // Filtered CSV Export Handler
   const handleExportCSV = () => {
-    if (applicants.length === 0) {
-      showError('No applicants to export.');
+    if (filteredApplicants.length === 0) {
+      showError('No applicants matching current filters to export.');
       return;
     }
 
@@ -220,26 +369,37 @@ const DriveApplicants = () => {
       'Email',
       'Branch',
       'CGPA',
-      'Backlogs',
+      'Active Backlogs',
+      'Passing Batch',
       'Phone',
-      'Status',
-      'Officer Remarks',
-      'Applied Date',
+      'Drive Title',
+      'Company Name',
+      'Application Date',
+      'Current Status',
+      'Officer Feedback',
+      'Eligibility Status',
     ];
 
-    const rows = applicants.map((app) => {
+    const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = filteredApplicants.map((app) => {
       const s = app.student || {};
+      const evalResult = evaluateEligibility(s, drive);
       return [
-        `"${s.rollNo || ''}"`,
-        `"${s.name || ''}"`,
-        `"${s.email || ''}"`,
-        `"${s.branch || ''}"`,
+        escapeCSV(s.rollNo || 'N/A'),
+        escapeCSV(s.name || ''),
+        escapeCSV(s.email || ''),
+        escapeCSV(s.branch || ''),
         s.cgpa || 0,
         s.activeBacklogs ?? 0,
-        `"${s.phone || ''}"`,
-        `"${app.status || ''}"`,
-        `"${(app.remarks || '').replace(/"/g, '""')}"`,
-        `"${new Date(app.appliedAt).toLocaleDateString()}"`,
+        escapeCSV(s.passingYear || drive?.eligibility?.passingYear || '2026'),
+        escapeCSV(s.phone || ''),
+        escapeCSV(drive?.title || ''),
+        escapeCSV(drive?.company?.name || ''),
+        escapeCSV(new Date(app.appliedAt).toLocaleDateString()),
+        escapeCSV(app.status || 'Applied'),
+        escapeCSV(app.remarks || ''),
+        escapeCSV(evalResult.isEligible ? 'ELIGIBLE' : 'INELIGIBLE'),
       ].join(',');
     });
 
@@ -249,12 +409,12 @@ const DriveApplicants = () => {
     link.setAttribute('href', encodedUri);
     link.setAttribute(
       'download',
-      `${(drive?.company?.name || 'Drive')}_Applicants_${new Date().toISOString().split('T')[0]}.csv`
+      `${(drive?.company?.name || 'Drive').replace(/\s+/g, '_')}_Filtered_Applicants_${new Date().toISOString().split('T')[0]}.csv`
     );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showSuccess('Applicant roster exported to CSV successfully!');
+    showSuccess(`Exported ${filteredApplicants.length} filtered applicant(s) to CSV!`);
   };
 
   // Open PDF Preview Modal
@@ -427,40 +587,207 @@ const DriveApplicants = () => {
         </div>
       </div>
 
-      {/* Applicant Metrics / Filters Bar */}
-      <div className="filter-bar">
-        <div className="search-input-wrapper">
-          <Search size={18} className="search-icon" />
-          <input
-            type="text"
-            className="form-control search-input"
-            placeholder="Search applicants by name, roll no, email, or branch..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      {/* Advanced Applicant Filters Bar */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
+        }}
+      >
+        {/* Row 1: Search & Reset */}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="search-input-wrapper" style={{ flex: 1, minWidth: '260px' }}>
+            <Search size={18} className="search-icon" />
+            <input
+              type="text"
+              className="form-control search-input"
+              placeholder="Search applicants by name, roll no, email, branch, or technical skills..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}
+            >
+              <RotateCcw size={14} />
+              <span>Reset Filters ({activeFilterCount})</span>
+            </button>
+          )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Filter size={16} color="#64748b" />
-          <select
-            className="form-control"
-            style={{ width: 'auto' }}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                Filter: {s}
-              </option>
-            ))}
-          </select>
+        {/* Row 2: Select Filter Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '0.75rem',
+            alignItems: 'center',
+          }}
+        >
+          {/* Status Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Filter size={15} color="#64748b" style={{ flexShrink: 0 }} />
+            <select
+              className="form-control"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ fontSize: '0.825rem' }}
+            >
+              {STATUS_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  Status: {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Branch Filter */}
+          <div>
+            <select
+              className="form-control"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              style={{ fontSize: '0.825rem' }}
+            >
+              {BRANCH_OPTIONS.map((b) => (
+                <option key={b} value={b}>
+                  Branch: {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* CGPA Filter */}
+          <div>
+            <select
+              className="form-control"
+              value={cgpaFilter}
+              onChange={(e) => setCgpaFilter(e.target.value)}
+              style={{ fontSize: '0.825rem' }}
+            >
+              {CGPA_OPTIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  CGPA: {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Eligibility Filter */}
+          <div>
+            <select
+              className="form-control"
+              value={eligibilityFilter}
+              onChange={(e) => setEligibilityFilter(e.target.value)}
+              style={{ fontSize: '0.825rem' }}
+            >
+              {ELIGIBILITY_OPTIONS.map((el) => (
+                <option key={el.value} value={el.value}>
+                  {el.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#334155' }}>
-          Total: {applicants.length} | Selected:{' '}
-          <span style={{ color: '#059669' }}>{selectedCount}</span>
+        {/* Row 3: Metrics Summary Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.825rem',
+            color: '#64748b',
+            borderTop: '1px solid #f1f5f9',
+            paddingTop: '0.75rem',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+          }}
+        >
+          <div>
+            Showing <strong style={{ color: '#0f172a' }}>{filteredApplicants.length}</strong> of{' '}
+            <strong style={{ color: '#0f172a' }}>{applicants.length}</strong> total applicants
+            {activeFilterCount > 0 && <span style={{ color: '#2563eb' }}> ({activeFilterCount} active filters)</span>}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <span>
+              Offers Extended: <strong style={{ color: '#16a34a' }}>{selectedCount}</strong>
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedAppIds.size > 0 && (
+        <div
+          style={{
+            position: 'sticky',
+            top: '75px',
+            zIndex: 40,
+            background: '#1e293b',
+            color: '#ffffff',
+            borderRadius: '10px',
+            padding: '0.75rem 1.25rem',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span
+              style={{
+                background: '#2563eb',
+                padding: '0.2rem 0.65rem',
+                borderRadius: '999px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+              }}
+            >
+              {selectedAppIds.size} Selected
+            </span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+              Batch applicant actions ready
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setBulkModalOpen(true)}
+              className="btn btn-primary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <Edit3 size={14} />
+              <span>Bulk Update Status ({selectedAppIds.size})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedAppIds(new Set())}
+              className="btn btn-secondary btn-sm"
+              style={{ background: '#334155', color: '#cbd5e1', borderColor: '#475569' }}
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Applicants Roster Table */}
       {loading ? (
@@ -470,10 +797,26 @@ const DriveApplicants = () => {
       ) : applicants.length === 0 ? (
         <div className="card empty-state">
           <Users size={48} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
-          <h3 className="empty-title">No Applicants Found</h3>
+          <h3 className="empty-title">No Applicants Registered</h3>
           <p className="empty-subtitle">
-            No student applications match the current filter or search criteria.
+            No students have applied to this placement drive yet.
           </p>
+        </div>
+      ) : filteredApplicants.length === 0 ? (
+        <div className="card empty-state">
+          <Users size={48} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
+          <h3 className="empty-title">No Matching Applicants Found</h3>
+          <p className="empty-subtitle">
+            No applications match your active search keyword or filter combination.
+          </p>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="btn btn-secondary btn-sm"
+            style={{ marginTop: '1rem' }}
+          >
+            Clear All Filters
+          </button>
         </div>
       ) : (
         <div className="card">
@@ -481,6 +824,18 @@ const DriveApplicants = () => {
             <table className="table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isSomeSelected;
+                      }}
+                      onChange={handleToggleSelectAll}
+                      title="Select all filtered applicants"
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                  </th>
                   <th>Roll No</th>
                   <th>Student Candidate</th>
                   <th>Branch & CGPA</th>
@@ -492,17 +847,27 @@ const DriveApplicants = () => {
                 </tr>
               </thead>
               <tbody>
-                {applicants.map((app) => {
+                {filteredApplicants.map((app) => {
                   const s = app.student || {};
                   const isSelected = app.status === 'Selected';
+                  const isChecked = selectedAppIds.has(app._id);
 
                   return (
                     <tr
                       key={app._id}
                       style={{
-                        background: isSelected ? '#f0fdf4' : 'transparent',
+                        background: isChecked ? '#eff6ff' : isSelected ? '#f0fdf4' : 'transparent',
                       }}
                     >
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleSelectRow(app._id)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </td>
+
                       <td style={{ fontWeight: 700, color: '#1e293b' }}>
                         {s.rollNo || 'N/A'}
                       </td>
@@ -671,13 +1036,23 @@ const DriveApplicants = () => {
         </div>
       )}
 
-      {/* Status Update Modal */}
+      {/* Single Status Update Modal */}
       <StatusUpdateModal
         isOpen={!!selectedAppForStatus}
         onClose={() => setSelectedAppForStatus(null)}
         application={selectedAppForStatus}
         onSubmit={handleStatusUpdate}
         isSubmitting={isUpdatingStatus}
+      />
+
+      {/* Bulk Status Update Modal */}
+      <BulkStatusUpdateModal
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        selectedCount={selectedAppIds.size}
+        drive={drive}
+        onSubmit={handleBulkStatusSubmit}
+        isSubmitting={isBulkUpdating}
       />
 
       {/* Comprehensive Officer Applicant Evaluation Modal */}

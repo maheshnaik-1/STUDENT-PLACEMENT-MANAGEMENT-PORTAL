@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
+import ApplicationTimeline from '../../components/student/ApplicationTimeline';
 import {
   FileCheck2,
   Building2,
@@ -550,6 +551,9 @@ const MyApplications = () => {
                   : 'No feedback provided yet. Your application is currently under review by the Training & Placement Cell.'}
               </p>
             </div>
+
+            {/* Application Lifecycle Timeline */}
+            <ApplicationTimeline application={selectedApp} />
 
             {/* Recruitment Rounds & Drive Info */}
             {selectedApp.drive?.rounds && selectedApp.drive.rounds.length > 0 && (
