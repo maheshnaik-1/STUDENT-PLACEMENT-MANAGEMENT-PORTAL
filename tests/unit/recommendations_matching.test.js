@@ -256,10 +256,67 @@ async function runTests() {
     assert(firstRec.skillMatch !== undefined, 'Drive item includes skillMatch object');
     assert(typeof firstRec.skillMatch.score === 'number', 'skillMatch.score is a number');
     assert(typeof firstRec.recommendationTier === 'string', 'recommendationTier is a string');
-    assert(firstRec.title === 'Web Development' && firstRec.skillMatch.score === 67,
-      'Live Ranking Rank 1 is Web Development (genuine 67% technical match precedes baseline drives)');
-    assert(recsData.data[1].skillMatch.totalRequired === 0 && recsData.data[2].skillMatch.totalRequired === 0,
-      'Live Ranking Ranks 2 and 3 are Baseline drives with No Skill Filter (Amazon & Deloitte)');
+    // Verify Web Development drive dynamic match calculation agreement
+    const webDevRec = recsData.data.find((d) => d.title === 'Web Development');
+    assert(Boolean(webDevRec), 'Web Development drive is present in recommendations list');
+    if (webDevRec) {
+      const studentSkills = rahulAuth.user?.skills || [];
+      const expectedWebDevMatch = calculateSkillMatch(studentSkills, webDevRec.requiredSkills);
+      assert(
+        webDevRec.skillMatch.score === expectedWebDevMatch.score,
+        `Web Development live match score (${webDevRec.skillMatch.score}%) dynamically agrees with candidate skills calculation (${expectedWebDevMatch.score}%)`
+      );
+      assert(webDevRec.academicEligibility.isEligible === true, 'Web Development drive is academically eligible for student');
+    }
+
+    // Verify Baseline / No Skill Filter drives exist and have correct tier & score
+    const baselineDrives = recsData.data.filter((d) => d.skillMatch.totalRequired === 0);
+    assert(baselineDrives.length >= 2, 'Baseline drives with No Skill Filter (Amazon & Deloitte) are present in recommendations');
+    const allBaselinesValid = baselineDrives.every(
+      (d) => d.skillMatch.score === 100 && d.recommendationTier === 'No Skill Filter' && getRecommendationRankPriority(d) === 2
+    );
+    assert(allBaselinesValid, 'All baseline drives receive score 100, "No Skill Filter" tier, and Priority 2');
+
+    // Verify Live Ranking Order Invariant across entire list:
+    // 1. Priority tier monotonic order (Priority 1 <= Priority 2 <= Priority 3 <= Priority 4)
+    // 2. Score descending within same priority tier
+    // 3. Drive date tie-breaker
+    let rankingContractPreserved = true;
+    for (let i = 0; i < recsData.data.length - 1; i++) {
+      const curr = recsData.data[i];
+      const next = recsData.data[i + 1];
+      const pCurr = getRecommendationRankPriority(curr);
+      const pNext = getRecommendationRankPriority(next);
+
+      if (pCurr > pNext) {
+        rankingContractPreserved = false;
+        break;
+      }
+      if (pCurr === pNext && curr.skillMatch.score < next.skillMatch.score) {
+        rankingContractPreserved = false;
+        break;
+      }
+      if (pCurr === pNext && curr.skillMatch.score === next.skillMatch.score) {
+        if (new Date(curr.driveDate) > new Date(next.driveDate)) {
+          rankingContractPreserved = false;
+          break;
+        }
+      }
+    }
+    assert(rankingContractPreserved, 'Live recommendations list strictly obeys priority tier, score descending, and date tie-breaker hierarchy');
+
+    // Genuine technical skill matches (Priority 1) strictly precede baseline No Skill Filter drives (Priority 2)
+    const genuineMatches = recsData.data.filter(
+      (d) => d.academicEligibility.isEligible && d.skillMatch.totalRequired > 0 && d.skillMatch.score > 0
+    );
+    if (genuineMatches.length > 0 && baselineDrives.length > 0) {
+      const maxGenuineIdx = Math.max(...genuineMatches.map((d) => recsData.data.indexOf(d)));
+      const minBaselineIdx = Math.min(...baselineDrives.map((d) => recsData.data.indexOf(d)));
+      assert(
+        maxGenuineIdx < minBaselineIdx,
+        'Genuine technical skill matches (Priority 1) strictly precede baseline No Skill Filter drives (Priority 2)'
+      );
+    }
 
     // Check GET /api/drives/:id/match-score
     const singleScoreRes = await fetch(`${API_BASE}/drives/${firstRec._id}/match-score`, {

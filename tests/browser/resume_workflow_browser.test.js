@@ -24,6 +24,16 @@ require(path.join(__dirname, '../../server/node_modules/dotenv')).config({
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const SEED_FIXTURE_SKILLS = [
+  'React',
+  'Node.js',
+  'MongoDB',
+  'Express',
+  'Python',
+  'AWS',
+  'Java',
+];
+
 function getChromePath() {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
   if (process.platform === 'win32') {
@@ -137,15 +147,49 @@ async function runValidation() {
   console.log('===============================================================\n');
 
   const { token, originalUser } = await getStudentToken();
-  const initialSkills = [...originalUser.skills];
-  console.log('Initial Student Profile loaded for testing:');
-  console.log(`  Role: ${originalUser.role} | Branch: ${originalUser.branch} | Skills count: ${initialSkills.length}`);
+  const originalSavedSkills = [...originalUser.skills];
+  console.log('Original Student Profile loaded from MongoDB:');
+  console.log(`  Role: ${originalUser.role} | Branch: ${originalUser.branch} | Saved skills count: ${originalSavedSkills.length}`);
+  console.log(`  Saved skills: [${originalSavedSkills.join(', ')}]`);
+
+  console.log('\n[SETUP] Applying controlled baseline seed fixture for deterministic browser testing...');
+  await restoreMongoSkills(SEED_FIXTURE_SKILLS);
+  const fixtureUser = await getMongoUser();
+  console.log(`[SETUP] Controlled fixture active in MongoDB: ${fixtureUser.skills.length} skills: [${fixtureUser.skills.join(', ')}]`);
+
+  let chromeProcess = null;
+  let cdp = null;
+  let isCleanedUp = false;
+
+  const safeTeardown = async () => {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+    try {
+      console.log('\n[TEARDOWN] Safely restoring legitimate student skills in MongoDB...');
+      await restoreMongoSkills(originalSavedSkills);
+      const restoredUser = await getMongoUser();
+      console.log(`[TEARDOWN] Preserved MongoDB skills count: ${restoredUser.skills.length}: [${restoredUser.skills.join(', ')}]`);
+    } catch (err) {
+      console.error('[TEARDOWN] Error restoring skills:', err.message);
+    }
+  };
+
+  process.on('SIGINT', async () => {
+    await safeTeardown();
+    if (chromeProcess) try { chromeProcess.kill(); } catch (_) {}
+    process.exit(1);
+  });
+  process.on('SIGTERM', async () => {
+    await safeTeardown();
+    if (chromeProcess) try { chromeProcess.kill(); } catch (_) {}
+    process.exit(1);
+  });
 
   const chromePath = getChromePath();
   const debuggingPort = 9222;
   const userDataDir = path.join(os.tmpdir(), `chrome_resume_test_${Date.now()}`);
 
-  const chromeProcess = spawn(
+  chromeProcess = spawn(
     chromePath,
     [
       `--remote-debugging-port=${debuggingPort}`,
@@ -163,7 +207,7 @@ async function runValidation() {
   try {
     const targets = await fetchJson(`http://localhost:${debuggingPort}/json/list`);
     const pageTarget = targets.find((t) => t.type === 'page') || targets[0];
-    const cdp = new CdpSession(pageTarget.webSocketDebuggerUrl);
+    cdp = new CdpSession(pageTarget.webSocketDebuggerUrl);
     await cdp.connect();
 
     await cdp.send('Page.enable');
@@ -228,7 +272,7 @@ async function runValidation() {
             hasDocumentStats: text.includes('.pdf') && text.includes('Words:') && text.includes('Characters:'),
             hasDetectedCount: text.includes('Detected Skills:'),
             hasNewSkillsCount: text.includes('New Skills Discovered in Resume'),
-            hasCurrentProfileSkills: text.includes('Current Profile Skills'),
+            hasCurrentProfileSkills: /current profile skills/i.test(text),
             hasContactEmail: emailPattern.test(text),
             hasContactPhone: phonePattern.test(text),
             hasGitHubLink: profileLinkPattern.test(text),
@@ -239,7 +283,7 @@ async function runValidation() {
     });
 
     console.log('Behavior 4 Validation Result:', modalData.result.value);
-    if (!modalData.result.value.open || !modalData.result.value.hasDocumentStats || !modalData.result.value.hasContactEmail) {
+    if (!modalData.result.value.open || !modalData.result.value.hasDocumentStats || !modalData.result.value.hasContactEmail || !modalData.result.value.hasCurrentProfileSkills) {
       throw new Error('Behavior 4 FAILED: Modal stats or document info not accurately displayed.');
     }
     console.log('  [PASS] Behavior 4: Accurate display of current profile skills, detected skills, stats, and contact info.');
@@ -425,8 +469,8 @@ async function runValidation() {
 
     // Verify MongoDB still untouched before save
     const mongoUserPreSave = await getMongoUser();
-    console.log(`MongoDB skills count before submit: ${mongoUserPreSave.skills.length} (original 7)`);
-    if (mongoUserPreSave.skills.length !== 7) {
+    console.log(`MongoDB skills count before submit: ${mongoUserPreSave.skills.length} (expected fixture count: ${SEED_FIXTURE_SKILLS.length})`);
+    if (mongoUserPreSave.skills.length !== SEED_FIXTURE_SKILLS.length) {
       throw new Error('Behavior 5 FAILED: MongoDB was altered before profile submission.');
     }
 
@@ -453,7 +497,7 @@ async function runValidation() {
     console.log(`MongoDB skills count after submit: ${mongoUserPostSave.skills.length} skills: [${mongoUserPostSave.skills.join(', ')}]`);
 
     // Verification 1: Skills persisted
-    if (mongoUserPostSave.skills.length <= 7) {
+    if (mongoUserPostSave.skills.length <= SEED_FIXTURE_SKILLS.length) {
       throw new Error('Behavior 5/6 FAILED: Skills were not persisted to MongoDB after submitting form.');
     }
     console.log('  [PASS] Behavior 5: Profile changes successfully persisted to MongoDB upon explicit form submission.');
@@ -471,24 +515,18 @@ async function runValidation() {
     }
     console.log('  [PASS] Behavior 6: All existing student profile fields and resume reference were safely preserved.');
 
-    // -------------------------------------------------------------
-    // RESTORATION: Restore Rahul's skills back to original 7
-    // -------------------------------------------------------------
-    console.log('\nRestoring student skills back to exact original database state...');
-    await restoreMongoSkills(initialSkills);
-    const restoredUser = await getMongoUser();
-    console.log(`Restored MongoDB skills count: ${restoredUser.skills.length}: [${restoredUser.skills.join(', ')}]`);
-
-    cdp.close();
+    if (cdp) cdp.close();
     console.log('\n===============================================================');
     console.log('  ALL 6 WORKFLOW BEHAVIORS SUCCESSFULLY VERIFIED IN BROWSER!');
     console.log('===============================================================\n');
   } catch (err) {
     console.error('Validation Error:', err);
-    await restoreMongoSkills(initialSkills);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
-    chromeProcess.kill();
+    await safeTeardown();
+    if (chromeProcess) {
+      chromeProcess.kill();
+    }
   }
 }
 
