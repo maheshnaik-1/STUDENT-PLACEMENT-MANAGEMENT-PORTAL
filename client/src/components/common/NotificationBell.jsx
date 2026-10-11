@@ -109,12 +109,107 @@ const NotificationBell = () => {
   const navigate = useNavigate();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
 
   const containerRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  // Context-aware dropdown positioning anchored to the notification bell:
+  // 1. Anchor dropdown directly beneath the bell with an 8px offset.
+  // 2. Maximum width approximately 380px (never overflowing viewport).
+  // 3. Height constrained by remaining viewport space so header stays visible and list scrolls.
+  // 4. On desktop, anchor to bell's right edge if bell is on the right; anchor to bell's left edge
+  //    if bell is near left edge or navbar wrapped. Safely clamp within [margin, viewport - margin].
+  // 5. On mobile (<=640px), center horizontally with consistent 16px side margins.
+  const calculateDropdownPosition = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return {};
+    }
+
+    const bellBtn = buttonRef.current || containerRef.current;
+    if (!bellBtn) {
+      return {
+        position: 'fixed',
+        top: '64px',
+        right: '16px',
+        width: 'min(380px, calc(100vw - 32px))',
+        maxWidth: '380px',
+      };
+    }
+
+    const bellRect = bellBtn.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 16;
+    const panelWidth = Math.min(380, viewportWidth - margin * 2);
+
+    // Position directly below bell
+    const top = bellRect && bellRect.bottom > 0 ? Math.round(bellRect.bottom + 8) : 64;
+
+    // Height constrained to available vertical space below top
+    const maxAvailableHeight = Math.max(200, viewportHeight - top - margin);
+    const maxHeight = Math.min(480, maxAvailableHeight);
+
+    // Mobile (<=640px): Centered horizontally with consistent 16px side margins
+    if (viewportWidth <= 640) {
+      return {
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${margin}px`,
+        right: `${margin}px`,
+        margin: '0 auto',
+        maxWidth: `${panelWidth}px`,
+        maxHeight: `${maxHeight}px`,
+        width: 'auto',
+      };
+    }
+
+    // Desktop (>640px): Context-aware anchor to notification bell
+    const bellCenter = bellRect.left + bellRect.width / 2;
+    const isRightHalf = bellCenter > viewportWidth / 2;
+
+    const rightAlignedLeft = Math.round(bellRect.right - panelWidth);
+    const leftAlignedLeft = Math.round(bellRect.left);
+
+    let left;
+    if (isRightHalf) {
+      // Bell is on the right side: prefer anchoring to bell's right edge
+      if (rightAlignedLeft >= margin) {
+        left = rightAlignedLeft;
+      } else if (leftAlignedLeft + panelWidth <= viewportWidth - margin) {
+        left = leftAlignedLeft;
+      } else {
+        left = margin;
+      }
+    } else {
+      // Bell is on the left side (or navbar wrapped): prefer anchoring to bell's left edge
+      if (leftAlignedLeft + panelWidth <= viewportWidth - margin) {
+        left = leftAlignedLeft;
+      } else if (rightAlignedLeft >= margin) {
+        left = rightAlignedLeft;
+      } else {
+        left = viewportWidth - margin - panelWidth;
+      }
+    }
+
+    // Clamp strictly within viewport margins
+    left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, Math.round(left)));
+
+    return {
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      right: 'auto',
+      width: `${panelWidth}px`,
+      maxWidth: '380px',
+      maxHeight: `${maxHeight}px`,
+      margin: '0',
+    };
+  }, []);
 
   // Fetch unread count & recent notifications
   const fetchNotificationData = useCallback(
@@ -183,6 +278,39 @@ const NotificationBell = () => {
     };
   }, [isAuthenticated, fetchNotificationData]);
 
+  // Reposition dropdown whenever opened, or when window resizes/scrolls
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updatePosition = () => {
+      const newStyle = calculateDropdownPosition();
+      setDropdownStyle((prev) => {
+        if (
+          prev.position === newStyle.position &&
+          prev.top === newStyle.top &&
+          prev.left === newStyle.left &&
+          prev.right === newStyle.right &&
+          prev.width === newStyle.width &&
+          prev.maxWidth === newStyle.maxWidth &&
+          prev.maxHeight === newStyle.maxHeight &&
+          prev.margin === newStyle.margin
+        ) {
+          return prev;
+        }
+        return newStyle;
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen, calculateDropdownPosition]);
+
   // Handle outside click to close dropdown
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -202,6 +330,7 @@ const NotificationBell = () => {
   // Toggle dropdown open/close
   const toggleDropdown = () => {
     if (!isOpen) {
+      setDropdownStyle(calculateDropdownPosition());
       fetchNotificationData(false);
     }
     setIsOpen((prev) => !prev);
@@ -257,6 +386,7 @@ const NotificationBell = () => {
     <div className="notification-bell-container" ref={containerRef}>
       {/* Bell Button */}
       <button
+        ref={buttonRef}
         type="button"
         className={`notification-bell-btn ${isOpen ? 'active' : ''}`}
         onClick={toggleDropdown}
@@ -273,7 +403,7 @@ const NotificationBell = () => {
 
       {/* Notification Dropdown Panel */}
       {isOpen && (
-        <div className="notification-dropdown">
+        <div className="notification-dropdown" style={dropdownStyle}>
           {/* Header */}
           <div className="notification-dropdown-header">
             <div className="header-title-area">

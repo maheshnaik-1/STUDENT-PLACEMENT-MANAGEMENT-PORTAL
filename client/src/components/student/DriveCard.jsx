@@ -17,8 +17,12 @@ const DriveCard = ({ drive, onApply, isApplying }) => {
   const company = drive.company || {};
   const eligibility = drive.eligibility || {};
 
-  const isEligible = drive.isEligible !== false;
-  const reasons = drive.eligibilityReasons || [];
+  const isEligible =
+    drive.academicEligibility !== undefined
+      ? drive.academicEligibility.isEligible
+      : drive.isEligible !== false;
+  const reasons =
+    drive.academicEligibility?.reasons || drive.eligibilityReasons || [];
   const hasApplied = drive.hasApplied;
 
   return (
@@ -260,6 +264,213 @@ const DriveCard = ({ drive, onApply, isApplying }) => {
             </div>
           )}
         </div>
+
+        {/* V3.0 AI Skill Match Section (when present) */}
+        {drive.skillMatch && (
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '0.75rem',
+              marginBottom: '1rem',
+              fontSize: '0.8rem',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.4rem',
+                flexWrap: 'wrap',
+                gap: '0.25rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                }}
+              >
+                <Sparkles size={14} color="#2563eb" />
+                <span>AI Skill Match:</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {drive.recommendationTier && (
+                  <span
+                    style={{
+                      padding: '0.15rem 0.45rem',
+                      borderRadius: '4px',
+                      fontSize: '0.725rem',
+                      fontWeight: 700,
+                      background:
+                        drive.recommendationTier === 'High Match'
+                          ? '#ecfdf5'
+                          : drive.recommendationTier === 'Moderate Match'
+                          ? '#eff6ff'
+                          : drive.recommendationTier === 'Ineligible'
+                          ? '#fef2f2'
+                          : '#f1f5f9',
+                      color:
+                        drive.recommendationTier === 'High Match'
+                          ? '#065f46'
+                          : drive.recommendationTier === 'Moderate Match'
+                          ? '#1e40af'
+                          : drive.recommendationTier === 'Ineligible'
+                          ? '#991b1b'
+                          : '#475569',
+                      border: '1px solid',
+                      borderColor:
+                        drive.recommendationTier === 'High Match'
+                          ? '#a7f3d0'
+                          : drive.recommendationTier === 'Moderate Match'
+                          ? '#bfdbfe'
+                          : drive.recommendationTier === 'Ineligible'
+                          ? '#fecaca'
+                          : '#cbd5e1',
+                    }}
+                  >
+                    {drive.recommendationTier}
+                  </span>
+                )}
+
+                {drive.skillMatch.totalRequired > 0 ? (
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      color:
+                        drive.skillMatch.score >= 70
+                          ? '#059669'
+                          : drive.skillMatch.score >= 40
+                          ? '#2563eb'
+                          : '#64748b',
+                    }}
+                  >
+                    {drive.skillMatch.score}%
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      fontSize: '0.75rem',
+                      color: '#64748b',
+                      background: '#f1f5f9',
+                      border: '1px solid #e2e8f0',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    Baseline
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Matched & Missing Skills list if required skills exist */}
+            {drive.skillMatch.totalRequired > 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.3rem',
+                  marginTop: '0.3rem',
+                }}
+              >
+                {drive.skillMatch.matchedSkills.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span
+                      style={{ color: '#059669', fontWeight: 600, fontSize: '0.75rem' }}
+                    >
+                      Matched:
+                    </span>
+                    {drive.skillMatch.matchedSkills.map((s) => (
+                      <span
+                        key={s}
+                        style={{
+                          background: '#dcfce7',
+                          color: '#166534',
+                          padding: '0.1rem 0.35rem',
+                          borderRadius: '4px',
+                          fontSize: '0.725rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {drive.skillMatch.missingSkills.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span
+                      style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.75rem' }}
+                    >
+                      Missing:
+                    </span>
+                    {drive.skillMatch.missingSkills.map((s) => (
+                      <span
+                        key={s}
+                        style={{
+                          background: '#fee2e2',
+                          color: '#991b1b',
+                          padding: '0.1rem 0.35rem',
+                          borderRadius: '4px',
+                          fontSize: '0.725rem',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  color: '#64748b',
+                  fontSize: '0.75rem',
+                  marginTop: '0.2rem',
+                }}
+              >
+                {drive.skillMatch.explanation}
+              </div>
+            )}
+
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: '#94a3b8',
+                marginTop: '0.4rem',
+                borderTop: '1px dashed #e2e8f0',
+                paddingTop: '0.3rem',
+              }}
+            >
+              *Skill match evaluates technical keywords only. Does not establish selection or academic eligibility.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Card Actions Footer */}

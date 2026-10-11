@@ -83,6 +83,10 @@ const placementDriveSchema = new mongoose.Schema(
       type: [String],
       default: ['Online Assessment', 'Technical Interview', 'HR Interview'],
     },
+    requiredSkills: {
+      type: [String],
+      default: [],
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

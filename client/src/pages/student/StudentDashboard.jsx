@@ -124,7 +124,20 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Link
+            to="/student/drives"
+            className="btn"
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              fontWeight: 700,
+            }}
+          >
+            <Sparkles size={16} />
+            Smart Recommendations
+          </Link>
           <Link
             to="/student/profile"
             className="btn"

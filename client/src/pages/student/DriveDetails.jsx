@@ -19,6 +19,8 @@ import {
   FileCheck2,
   Layers,
   Sparkles,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 const DriveDetails = () => {
@@ -30,6 +32,9 @@ const DriveDetails = () => {
   const [drive, setDrive] = useState(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [matchScoreData, setMatchScoreData] = useState(null);
+  const [matchScoreLoading, setMatchScoreLoading] = useState(true);
+  const [matchScoreError, setMatchScoreError] = useState(null);
 
   const fetchDriveDetails = async () => {
     try {
@@ -45,8 +50,28 @@ const DriveDetails = () => {
     }
   };
 
+  const fetchMatchScore = async (driveId) => {
+    if (!driveId) return;
+    try {
+      setMatchScoreLoading(true);
+      setMatchScoreError(null);
+      setMatchScoreData(null);
+      const res = await api.drives.getMatchScore(driveId);
+      if (res.success) {
+        setMatchScoreData(res.data);
+      } else {
+        setMatchScoreError(res.message || 'Unable to compute match score');
+      }
+    } catch (err) {
+      setMatchScoreError(err.message || 'Unable to compute match score');
+    } finally {
+      setMatchScoreLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchDriveDetails();
+    fetchMatchScore(id);
   }, [id]);
 
   const handleApply = async () => {
@@ -56,6 +81,7 @@ const DriveDetails = () => {
       if (res.success) {
         showSuccess(res.message || 'Application submitted successfully!');
         fetchDriveDetails();
+        fetchMatchScore(id);
       }
     } catch (err) {
       showError(err.message || 'Failed to submit application');
@@ -424,6 +450,363 @@ const DriveDetails = () => {
         </div>
       </div>
 
+      {/* Skill Match Breakdown Card */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div
+          className="card-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+          }}
+        >
+          <h3 className="card-title">
+            <Sparkles size={18} color="#6366f1" />
+            Skill Match & Candidate Alignment
+          </h3>
+
+          {matchScoreData && !matchScoreLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span
+                style={{
+                  background:
+                    matchScoreData.skillMatch.totalRequired === 0
+                      ? '#f1f5f9'
+                      : matchScoreData.skillMatch.score >= 70
+                      ? '#ecfdf5'
+                      : matchScoreData.skillMatch.score >= 40
+                      ? '#eff6ff'
+                      : '#f1f5f9',
+                  color:
+                    matchScoreData.skillMatch.totalRequired === 0
+                      ? '#475569'
+                      : matchScoreData.skillMatch.score >= 70
+                      ? '#065f46'
+                      : matchScoreData.skillMatch.score >= 40
+                      ? '#1e40af'
+                      : '#475569',
+                  border: '1px solid',
+                  borderColor:
+                    matchScoreData.skillMatch.totalRequired === 0
+                      ? '#cbd5e1'
+                      : matchScoreData.skillMatch.score >= 70
+                      ? '#a7f3d0'
+                      : matchScoreData.skillMatch.score >= 40
+                      ? '#bfdbfe'
+                      : '#cbd5e1',
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '9999px',
+                  fontWeight: 800,
+                  fontSize: '0.875rem',
+                }}
+              >
+                {matchScoreData.skillMatch.totalRequired === 0
+                  ? 'Baseline Score'
+                  : `${matchScoreData.skillMatch.score}% Match Score`}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="card-body">
+          {matchScoreLoading ? (
+            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b' }}>
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  border: '3px solid #e2e8f0',
+                  borderTopColor: '#6366f1',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  margin: '0 auto 0.75rem',
+                }}
+              />
+              <p style={{ fontSize: '0.875rem' }}>Computing skill match breakdown...</p>
+            </div>
+          ) : matchScoreError ? (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                padding: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#991b1b', fontSize: '0.875rem' }}>
+                <AlertCircle size={16} />
+                <span>{matchScoreError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchMatchScore(id)}
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <RefreshCw size={14} />
+                Retry Analysis
+              </button>
+            </div>
+          ) : matchScoreData ? (
+            <div>
+              {/* Score Progress Bar */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.4rem',
+                    fontSize: '0.825rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ color: '#475569' }}>Profile Skills Alignment</span>
+                  <span
+                    style={{
+                      color:
+                        matchScoreData.skillMatch.totalRequired === 0
+                          ? '#64748b'
+                          : matchScoreData.skillMatch.score >= 70
+                          ? '#059669'
+                          : matchScoreData.skillMatch.score >= 40
+                          ? '#2563eb'
+                          : '#64748b',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {matchScoreData.skillMatch.totalRequired > 0
+                      ? `${matchScoreData.skillMatch.totalMatched} of ${matchScoreData.skillMatch.totalRequired} required skills matched (${matchScoreData.skillMatch.score}%)`
+                      : 'No required technical skills specified'}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    height: '8px',
+                    borderRadius: '9999px',
+                    background: '#e2e8f0',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(100, Math.max(0, matchScoreData.skillMatch.score))}%`,
+                      background:
+                        matchScoreData.skillMatch.totalRequired === 0
+                          ? '#94a3b8'
+                          : matchScoreData.skillMatch.score >= 70
+                          ? 'linear-gradient(90deg, #10b981, #059669)'
+                          : matchScoreData.skillMatch.score >= 40
+                          ? 'linear-gradient(90deg, #3b82f6, #2563eb)'
+                          : 'linear-gradient(90deg, #94a3b8, #64748b)',
+                      borderRadius: '9999px',
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Match Explanation */}
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  fontSize: '0.85rem',
+                  color: '#334155',
+                  marginBottom: '1.25rem',
+                }}
+              >
+                {matchScoreData.skillMatch.explanation}
+              </div>
+
+              {/* Matched & Missing Skills Breakdown */}
+              {matchScoreData.skillMatch.totalRequired > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gap: '1rem',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  {/* Matched Skills */}
+                  <div
+                    style={{
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        fontWeight: 700,
+                        color: '#166534',
+                        fontSize: '0.85rem',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      <CheckCircle2 size={16} color="#16a34a" />
+                      <span>
+                        Matched Skills ({matchScoreData.skillMatch.matchedSkills.length})
+                      </span>
+                    </div>
+                    {matchScoreData.skillMatch.matchedSkills.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {matchScoreData.skillMatch.matchedSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            style={{
+                              background: '#dcfce7',
+                              color: '#166534',
+                              border: '1px solid #86efac',
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '6px',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ✓ {skill}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: '#65a30d', fontSize: '0.8rem', margin: 0 }}>
+                        None of your current profile skills match the required keywords.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Missing Skills */}
+                  <div
+                    style={{
+                      background: '#fff1f2',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        fontWeight: 700,
+                        color: '#9f1239',
+                        fontSize: '0.85rem',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      <XCircle size={16} color="#e11d48" />
+                      <span>
+                        Missing Skills ({matchScoreData.skillMatch.missingSkills.length})
+                      </span>
+                    </div>
+                    {matchScoreData.skillMatch.missingSkills.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {matchScoreData.skillMatch.missingSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            style={{
+                              background: '#ffe4e6',
+                              color: '#9f1239',
+                              border: '1px solid #fda4af',
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '6px',
+                              fontSize: '0.8rem',
+                              fontWeight: 500,
+                            }}
+                          >
+                            ✕ {skill}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: '#059669', fontSize: '0.8rem', margin: 0 }}>
+                        All required skills are present in your student profile!
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '8px',
+                    padding: '0.85rem 1rem',
+                    marginBottom: '1.25rem',
+                    fontSize: '0.825rem',
+                    color: '#1e40af',
+                  }}
+                >
+                  No specific mandatory skills are designated for this drive. All candidates receive a baseline 100% skill score.
+                </div>
+              )}
+
+              {/* Additional Student Skills */}
+              {matchScoreData.skillMatch.additionalSkills &&
+                matchScoreData.skillMatch.additionalSkills.length > 0 && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        marginBottom: '0.4rem',
+                      }}
+                    >
+                      Other skills in your profile:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {matchScoreData.skillMatch.additionalSkills.map((skill) => (
+                        <span
+                          key={skill}
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* Explicit Legal/Advisory Disclaimer */}
+              <div
+                style={{
+                  borderTop: '1px solid #e2e8f0',
+                  paddingTop: '0.75rem',
+                  fontSize: '0.75rem',
+                  color: '#64748b',
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Evaluation Disclaimer:</strong> Skill match evaluates technical keyword overlap between your student profile and job requirements. Match score is independent of academic eligibility and does not represent a hiring probability or guarantee of placement.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       {/* Job Description Card */}
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div className="card-header">
@@ -433,6 +816,41 @@ const DriveDetails = () => {
           </h3>
         </div>
         <div className="card-body">
+          {drive.requiredSkills && drive.requiredSkills.length > 0 && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  fontSize: '0.825rem',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                Required Technical Skills:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {drive.requiredSkills.map((skill) => (
+                  <span
+                    key={skill}
+                    style={{
+                      background: '#eff6ff',
+                      color: '#1e40af',
+                      border: '1px solid #bfdbfe',
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div
             style={{
               color: '#334155',

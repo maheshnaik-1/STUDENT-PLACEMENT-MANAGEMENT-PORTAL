@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const PlacementDrive = require('../models/PlacementDrive');
 const Application = require('../models/Application');
 const User = require('../models/User');
+const { calculateSkillMatch, normalizeSkillList } = require('../services/skillMatcher');
 
 /**
  * Helper function to evaluate student eligibility against a drive's criteria
@@ -52,6 +54,23 @@ const checkStudentEligibility = (student, drive) => {
   }
 
   return { isEligible, reasons };
+};
+
+/**
+ * Helper to determine placement drive recommendation ranking tier priority:
+ * Priority 1: Academically Eligible with Genuine Technical Skill Match (> 0%)
+ * Priority 2: Academically Eligible with No Skill Filter (Baseline category)
+ * Priority 3: Academically Eligible with Zero Technical Match (0%)
+ * Priority 4: Academically Ineligible (always ranked at bottom)
+ */
+const getRecommendationRankPriority = (rec) => {
+  const isEligible = Boolean(rec.academicEligibility?.isEligible ?? rec.isEligible);
+  if (!isEligible) return 4;
+  const totalRequired = rec.skillMatch?.totalRequired ?? 0;
+  const score = rec.skillMatch?.score ?? 0;
+  if (totalRequired > 0 && score > 0) return 1;
+  if (totalRequired === 0) return 2;
+  return 3;
 };
 
 /**
@@ -208,6 +227,7 @@ const createDrive = async (req, res, next) => {
       deadline,
       status,
       rounds,
+      requiredSkills,
     } = req.body;
 
     const drive = await PlacementDrive.create({
@@ -222,6 +242,7 @@ const createDrive = async (req, res, next) => {
       deadline,
       status: status || 'Upcoming',
       rounds: rounds || ['Online Assessment', 'Technical Interview', 'HR Interview'],
+      requiredSkills: normalizeSkillList(requiredSkills || []),
       createdBy: req.user._id,
     });
 
@@ -254,6 +275,10 @@ const updateDrive = async (req, res, next) => {
         success: false,
         message: 'Placement drive not found',
       });
+    }
+
+    if (req.body.requiredSkills !== undefined) {
+      req.body.requiredSkills = normalizeSkillList(req.body.requiredSkills);
     }
 
     drive = await PlacementDrive.findByIdAndUpdate(req.params.id, req.body, {
@@ -302,10 +327,211 @@ const deleteDrive = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get AI/skill-based placement drive recommendations for authenticated student
+ * @route   GET /api/drives/recommendations
+ * @access  Private (Student only)
+ */
+const getDriveRecommendations = async (req, res, next) => {
+  try {
+    const student = await User.findById(req.user._id);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student account not found',
+      });
+    }
+
+    // Fetch student's existing applications
+    const studentApplications = await Application.find({ student: student._id });
+    const appliedMap = new Map(
+      studentApplications.map((app) => [app.drive.toString(), app])
+    );
+
+    // Fetch active/upcoming drives
+    const drives = await PlacementDrive.find({ status: { $ne: 'Cancelled' } })
+      .populate('company', 'name industry website location logoUrl contactEmail')
+      .sort({ driveDate: 1, createdAt: -1 });
+
+    const recommendations = drives.map((drive) => {
+      const driveObj = drive.toObject();
+      const existingApp = appliedMap.get(drive._id.toString());
+
+      // 1. Academic Eligibility Check
+      const { isEligible, reasons } = checkStudentEligibility(student, drive);
+
+      // 2. Skill Match Engine Calculation
+      const skillMatch = calculateSkillMatch(
+        student.skills || [],
+        drive.requiredSkills || []
+      );
+
+      // 3. Recommendation Tier Determination
+      let recommendationTier = 'Potential Match';
+      if (isEligible) {
+        if (skillMatch.totalRequired === 0) {
+          recommendationTier = 'No Skill Filter';
+        } else if (skillMatch.score >= 70) {
+          recommendationTier = 'High Match';
+        } else if (skillMatch.score >= 40) {
+          recommendationTier = 'Moderate Match';
+        }
+      } else {
+        recommendationTier = 'Ineligible';
+      }
+
+      return {
+        _id: driveObj._id,
+        title: driveObj.title,
+        jobRole: driveObj.jobRole,
+        company: driveObj.company,
+        packageCTC: driveObj.packageCTC,
+        location: driveObj.location,
+        driveDate: driveObj.driveDate,
+        deadline: driveObj.deadline,
+        status: driveObj.status,
+        rounds: driveObj.rounds,
+        eligibility: driveObj.eligibility,
+        requiredSkills: driveObj.requiredSkills || [],
+        hasApplied: Boolean(existingApp),
+        myApplicationStatus: existingApp ? existingApp.status : null,
+        myApplicationId: existingApp ? existingApp._id : null,
+        isEligible,
+        eligibilityReasons: reasons,
+        recommendationTier,
+        academicEligibility: {
+          isEligible,
+          reasons,
+        },
+        skillMatch: {
+          score: skillMatch.score,
+          matchPercentage: skillMatch.matchPercentage,
+          matchedSkills: skillMatch.matchedSkills,
+          missingSkills: skillMatch.missingSkills,
+          additionalSkills: skillMatch.additionalSkills,
+          totalRequired: skillMatch.totalRequired,
+          totalMatched: skillMatch.totalMatched,
+          explanation: skillMatch.explanation,
+        },
+      };
+    });
+
+    // Sort: Priority tier first, then by skill score descending, then by drive date ascending
+    recommendations.sort((a, b) => {
+      const priorityA = getRecommendationRankPriority(a);
+      const priorityB = getRecommendationRankPriority(b);
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      if (b.skillMatch.score !== a.skillMatch.score) {
+        return b.skillMatch.score - a.skillMatch.score;
+      }
+      return new Date(a.driveDate) - new Date(b.driveDate);
+    });
+
+    res.status(200).json({
+      success: true,
+      count: recommendations.length,
+      data: recommendations,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get skill-match breakdown and academic eligibility for a specific drive
+ * @route   GET /api/drives/:id/match-score
+ * @access  Private (Student only)
+ */
+const getDriveMatchScore = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid placement drive ID format',
+      });
+    }
+
+    const drive = await PlacementDrive.findById(id).populate(
+      'company',
+      'name industry website location logoUrl contactEmail'
+    );
+
+    if (!drive) {
+      return res.status(404).json({
+        success: false,
+        message: 'Placement drive not found',
+      });
+    }
+
+    const student = await User.findById(req.user._id);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student account not found',
+      });
+    }
+
+    // Check application status
+    const application = await Application.findOne({
+      student: student._id,
+      drive: drive._id,
+    });
+
+    // Evaluate academic eligibility
+    const { isEligible, reasons } = checkStudentEligibility(student, drive);
+
+    // Evaluate skill match
+    const skillMatch = calculateSkillMatch(
+      student.skills || [],
+      drive.requiredSkills || []
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        driveId: drive._id,
+        driveTitle: drive.title,
+        jobRole: drive.jobRole,
+        company: drive.company,
+        requiredSkills: drive.requiredSkills || [],
+        studentSkills: student.skills || [],
+        hasApplied: Boolean(application),
+        myApplicationStatus: application ? application.status : null,
+        myApplicationId: application ? application._id : null,
+        academicEligibility: {
+          isEligible,
+          reasons,
+        },
+        skillMatch: {
+          score: skillMatch.score,
+          matchPercentage: skillMatch.matchPercentage,
+          matchedSkills: skillMatch.matchedSkills,
+          missingSkills: skillMatch.missingSkills,
+          additionalSkills: skillMatch.additionalSkills,
+          totalRequired: skillMatch.totalRequired,
+          totalMatched: skillMatch.totalMatched,
+          explanation: skillMatch.explanation,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   checkStudentEligibility,
+  getRecommendationRankPriority,
   getDrives,
   getDriveById,
+  getDriveRecommendations,
+  getDriveMatchScore,
   createDrive,
   updateDrive,
   deleteDrive,

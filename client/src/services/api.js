@@ -136,6 +136,8 @@ export const api = {
       return request(`/drives${buildQuery(params)}`);
     },
     getById: (id) => request(`/drives/${id}`),
+    getRecommendations: () => request('/drives/recommendations'),
+    getMatchScore: (id) => request(`/drives/${id}/match-score`),
     create: (driveData) =>
       request('/drives', {
         method: 'POST',
@@ -162,6 +164,8 @@ export const api = {
     getDriveApplicants: (driveId, params = {}) => {
       return request(`/applications/drive/${driveId}${buildQuery(params)}`);
     },
+    getMatchScores: (driveId) =>
+      request(`/applications/drive/${driveId}/match-scores`),
     updateStatus: (applicationId, statusData) =>
       request(`/applications/${applicationId}/status`, {
         method: 'PUT',
@@ -176,6 +180,14 @@ export const api = {
     getAnalytics: (params = {}) => {
       return request(`/applications/analytics${buildQuery(params)}`);
     },
+  },
+
+  // Intelligence & AI APIs (V3.0)
+  ai: {
+    parseResume: () =>
+      request('/ai/parse-resume', {
+        method: 'POST',
+      }),
   },
 
   // Student Directory APIs (Officer view)

@@ -1,9 +1,11 @@
+const mongoose = require('mongoose');
 const Application = require('../models/Application');
 const PlacementDrive = require('../models/PlacementDrive');
 const Company = require('../models/Company');
 const User = require('../models/User');
 const { checkStudentEligibility } = require('./driveController');
 const { createNotification } = require('./notificationController');
+const { calculateSkillMatch } = require('../services/skillMatcher');
 
 /**
  * @desc    Apply for a placement drive (with strict eligibility & duplicate checks)
@@ -998,10 +1000,142 @@ const getOfficerAnalytics = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get AI/skill-match scores and eligibility for all applicants to a drive
+ * @route   GET /api/applications/drive/:driveId/match-scores
+ * @access  Private (Placement Officer only)
+ */
+const getDriveApplicantMatchScores = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(driveId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid placement drive ID format',
+      });
+    }
+
+    const drive = await PlacementDrive.findById(driveId).populate(
+      'company',
+      'name industry location logoUrl'
+    );
+
+    if (!drive) {
+      return res.status(404).json({
+        success: false,
+        message: 'Placement drive not found',
+      });
+    }
+
+    const applications = await Application.find({ drive: driveId })
+      .populate({
+        path: 'student',
+        select: 'name email rollNo branch cgpa activeBacklogs passingYear skills resumeFile',
+      })
+      .sort({ appliedAt: -1 });
+
+    let totalScore = 0;
+    const scoreDistribution = {
+      excellent: 0, // 80 - 100
+      good: 0,      // 60 - 79
+      moderate: 0,  // 40 - 59
+      low: 0,       // 1 - 39
+      zero: 0,      // 0
+    };
+
+    const applicantResults = applications.map((app) => {
+      const student = app.student;
+      const studentSkills = student?.skills || [];
+      const match = calculateSkillMatch(
+        studentSkills,
+        drive.requiredSkills || []
+      );
+
+      const eligibility = student
+        ? checkStudentEligibility(student, drive)
+        : { isEligible: false, reasons: ['Student profile missing'] };
+
+      totalScore += match.score;
+      if (match.score >= 80) scoreDistribution.excellent++;
+      else if (match.score >= 60) scoreDistribution.good++;
+      else if (match.score >= 40) scoreDistribution.moderate++;
+      else if (match.score > 0) scoreDistribution.low++;
+      else scoreDistribution.zero++;
+
+      return {
+        applicationId: app._id,
+        status: app.status,
+        remarks: app.remarks || '',
+        appliedAt: app.appliedAt,
+        student: student
+          ? {
+              _id: student._id,
+              name: student.name,
+              email: student.email,
+              rollNo: student.rollNo,
+              branch: student.branch,
+              cgpa: student.cgpa,
+              activeBacklogs: student.activeBacklogs,
+              passingYear: student.passingYear,
+              skills: student.skills || [],
+              hasResume: Boolean(student.resumeFile?.filename),
+              resumeOriginalName: student.resumeFile?.originalName || null,
+            }
+          : null,
+        academicEligibility: eligibility,
+        skillMatch: {
+          score: match.score,
+          matchPercentage: match.matchPercentage,
+          matchedSkills: match.matchedSkills,
+          missingSkills: match.missingSkills,
+          additionalSkills: match.additionalSkills,
+          totalRequired: match.totalRequired,
+          totalMatched: match.totalMatched,
+          explanation: match.explanation,
+        },
+      };
+    });
+
+    const totalApplicants = applicantResults.length;
+    const averageScore =
+      totalApplicants > 0 ? Math.round(totalScore / totalApplicants) : 0;
+
+    // Sort applicants: Highest match score first, then academically eligible first, then earliest applied
+    applicantResults.sort((a, b) => {
+      if (b.skillMatch.score !== a.skillMatch.score) {
+        return b.skillMatch.score - a.skillMatch.score;
+      }
+      if (a.academicEligibility.isEligible !== b.academicEligibility.isEligible) {
+        return a.academicEligibility.isEligible ? -1 : 1;
+      }
+      return new Date(a.appliedAt) - new Date(b.appliedAt);
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        driveId: drive._id,
+        driveTitle: drive.title,
+        jobRole: drive.jobRole,
+        company: drive.company,
+        requiredSkills: drive.requiredSkills || [],
+        totalApplicants,
+        averageScore,
+        scoreDistribution,
+        applicants: applicantResults,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   applyForDrive,
   getMyApplications,
   getDriveApplicants,
+  getDriveApplicantMatchScores,
   updateApplicationStatus,
   bulkUpdateApplicationStatus,
   getPlacementStats,

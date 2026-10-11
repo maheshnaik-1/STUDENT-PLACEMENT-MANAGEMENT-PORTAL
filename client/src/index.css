@@ -800,11 +800,7 @@ a:hover {
 }
 
 .notification-dropdown {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  width: 380px;
-  max-width: 90vw;
+  position: fixed;
   background: var(--white);
   border-radius: var(--radius-lg);
   border: 1px solid var(--slate-200);
@@ -813,7 +809,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
   animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 380px;
 }
 
 .notification-dropdown-header {
@@ -823,6 +821,7 @@ a:hover {
   padding: 0.875rem 1.125rem;
   border-bottom: 1px solid var(--slate-100);
   background: var(--slate-50);
+  flex-shrink: 0;
 }
 
 .header-title-area {
@@ -873,9 +872,40 @@ a:hover {
 }
 
 .notification-dropdown-body {
-  max-height: 420px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(440px, calc(100vh - 130px));
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.notification-dropdown-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notification-dropdown-body::-webkit-scrollbar-track {
+  background: var(--slate-50);
+}
+
+.notification-dropdown-body::-webkit-scrollbar-thumb {
+  background: var(--slate-300);
+  border-radius: var(--radius-full);
+}
+
+.notification-dropdown-body::-webkit-scrollbar-thumb:hover {
+  background: var(--slate-400);
+}
+
+@media (max-width: 640px) {
+  .notification-dropdown {
+    position: fixed;
+    left: 16px !important;
+    right: 16px !important;
+    margin: 0 auto !important;
+    width: auto !important;
+    max-width: 380px !important;
+  }
 }
 
 .notification-loading-state {

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { api } from '../../services/api';
 import Modal from '../../components/common/Modal';
+import ResumeAnalysisModal from '../../components/student/ResumeAnalysisModal';
 import {
   GraduationCap,
   FileText,
@@ -201,6 +202,43 @@ const StudentProfile = () => {
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+
+  // V3.0 AI Resume Analysis Modal State
+  const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
+
+  const handleAddSkillFromAnalysis = (skillsToAdd) => {
+    const list = Array.isArray(skillsToAdd) ? skillsToAdd : [skillsToAdd];
+    if (list.length === 0) return;
+
+    setFormData((prev) => {
+      const existing = prev.skills
+        ? prev.skills.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+      const existingLowerSet = new Set(existing.map((s) => s.toLowerCase()));
+      const added = [];
+
+      list.forEach((newSkill) => {
+        const trimmed = typeof newSkill === 'string' ? newSkill.trim() : '';
+        if (trimmed && !existingLowerSet.has(trimmed.toLowerCase())) {
+          added.push(trimmed);
+          existingLowerSet.add(trimmed.toLowerCase());
+        }
+      });
+
+      if (added.length === 0) {
+        return prev;
+      }
+
+      const updated = [...existing, ...added].join(', ');
+      if (added.length === 1) {
+        showSuccess(`Added "${added[0]}" to your skills draft. Click "Save Career Profile" to save.`);
+      } else {
+        showSuccess(`Added ${added.length} new skills to your skills draft. Click "Save Career Profile" to save.`);
+      }
+
+      return { ...prev, skills: updated };
+    });
+  };
 
   useEffect(() => {
     if (user) {
@@ -1490,7 +1528,26 @@ const StudentProfile = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setAnalysisModalOpen(true)}
+                      className="btn btn-sm"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        background: 'linear-gradient(135deg, #1e40af, #3b82f6)',
+                        color: '#ffffff',
+                        border: 'none',
+                        fontWeight: 600,
+                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)',
+                      }}
+                    >
+                      <Sparkles size={15} />
+                      <span>AI Skills Analysis</span>
+                    </button>
+
                     {isPdf && (
                       <button
                         type="button"
@@ -1803,6 +1860,14 @@ const StudentProfile = () => {
           )}
         </div>
       </Modal>
+
+      {/* V3.0 AI Resume Analysis Modal */}
+      <ResumeAnalysisModal
+        isOpen={analysisModalOpen}
+        onClose={() => setAnalysisModalOpen(false)}
+        user={user}
+        onAddSkillToProfile={handleAddSkillFromAnalysis}
+      />
     </div>
   );
 };

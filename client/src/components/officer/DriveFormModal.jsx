@@ -25,6 +25,7 @@ const DriveFormModal = ({
     deadline: '',
     status: 'Upcoming',
     roundsText: 'Online Assessment, Technical Interview, HR Interview',
+    requiredSkillsText: '',
     jobDescription: '',
   });
 
@@ -49,6 +50,9 @@ const DriveFormModal = ({
           : '',
         status: initialData.status || 'Upcoming',
         roundsText: initialData.rounds ? initialData.rounds.join(', ') : '',
+        requiredSkillsText: Array.isArray(initialData.requiredSkills)
+          ? initialData.requiredSkills.join(', ')
+          : '',
         jobDescription: initialData.jobDescription || '',
       });
     } else {
@@ -66,6 +70,7 @@ const DriveFormModal = ({
         deadline: '',
         status: 'Upcoming',
         roundsText: 'Online Assessment, Technical Interview, HR Interview',
+        requiredSkillsText: '',
         jobDescription: '',
       });
     }
@@ -122,6 +127,12 @@ const DriveFormModal = ({
         .split(',')
         .map((r) => r.trim())
         .filter(Boolean),
+      requiredSkills: formData.requiredSkillsText
+        ? formData.requiredSkillsText
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
       jobDescription: formData.jobDescription,
     };
 
@@ -370,6 +381,30 @@ const DriveFormModal = ({
             value={formData.roundsText}
             onChange={handleChange}
           />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            Required Technical Skills (Optional, comma-separated)
+          </label>
+          <input
+            type="text"
+            name="requiredSkillsText"
+            className="form-control"
+            placeholder="e.g. React, Node.js, Python, AWS, Docker"
+            value={formData.requiredSkillsText}
+            onChange={handleChange}
+          />
+          <small
+            style={{
+              color: '#64748b',
+              fontSize: '0.75rem',
+              marginTop: '0.25rem',
+              display: 'block',
+            }}
+          >
+            Used by V3.0 AI skill matching to compute student match scores. Leave blank if no specific skills are required.
+          </small>
         </div>
 
         <div className="form-group">

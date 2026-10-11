@@ -4,6 +4,7 @@ const {
   applyForDrive,
   getMyApplications,
   getDriveApplicants,
+  getDriveApplicantMatchScores,
   updateApplicationStatus,
   bulkUpdateApplicationStatus,
   getPlacementStats,
@@ -20,6 +21,7 @@ router.get('/my-applications', protect, authorize('student'), getMyApplications)
 
 // Placement Officer routes
 router.get('/analytics', protect, authorize('officer'), getOfficerAnalytics);
+router.get('/drive/:driveId/match-scores', protect, authorize('officer'), getDriveApplicantMatchScores);
 router.get('/drive/:driveId', protect, authorize('officer'), getDriveApplicants);
 router.put('/bulk-status', protect, authorize('officer'), bulkUpdateApplicationStatus);
 router.put('/:id/status', protect, authorize('officer'), updateApplicationStatus);
