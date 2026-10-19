@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import VisualRecruitmentFunnel from '../../components/officer/VisualRecruitmentFunnel';
 import {
   BarChart3,
   Download,
@@ -404,7 +405,7 @@ const PlacementReports = () => {
             <div className="stat-label">Placement Drives</div>
             <div className="stat-value">{summary.totalDrives || 0}</div>
             <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>
-              Active & scheduled drives
+              Active campus drives in portal catalog
             </div>
           </div>
           <div className="stat-icon-wrapper stat-icon-blue">
@@ -429,12 +430,12 @@ const PlacementReports = () => {
         {/* 3. Shortlisted Candidates */}
         <div className="stat-card">
           <div className="stat-info">
-            <div className="stat-label">Shortlisted Candidates</div>
+            <div className="stat-label">Currently Shortlisted</div>
             <div className="stat-value" style={{ color: '#d97706' }}>
               {summary.totalShortlisted || 0}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>
-              Cleared initial screening
+              In screening / awaiting technical rounds
             </div>
           </div>
           <div className="stat-icon-wrapper stat-icon-amber">
@@ -466,7 +467,7 @@ const PlacementReports = () => {
               {summary.totalUnderReview || 0}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' }}>
-              Applied, Tech & Interview
+              Applied, Shortlisted, Tech & Interview
             </div>
           </div>
           <div className="stat-icon-wrapper stat-icon-blue">
@@ -622,6 +623,14 @@ const PlacementReports = () => {
           {/* TAB 1: EXECUTIVE OVERVIEW */}
           {activeTab === 'overview' && (
             <div>
+              {/* Visual Recruitment Funnel & Candidate Conversion Pipeline */}
+              <VisualRecruitmentFunnel
+                funnelData={analytics?.recruitmentFunnel}
+                salaryData={analytics?.salaryAnalytics}
+                branchData={branchAnalytics}
+                onResetFilters={handleResetFilters}
+              />
+
               {/* Status Distribution & Placement Ratio Grid */}
               <div
                 style={{

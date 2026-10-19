@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import VisualRecruitmentFunnel from '../../components/officer/VisualRecruitmentFunnel';
 import {
   Building2,
   Briefcase,
@@ -144,6 +145,13 @@ const OfficerDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Recruitment Pipeline Funnel Velocity Widget */}
+      {stats?.recruitmentFunnel && (
+        <div style={{ marginBottom: '1.75rem' }}>
+          <VisualRecruitmentFunnel compact={true} funnelData={stats.recruitmentFunnel} />
+        </div>
+      )}
 
       {/* Active Drives Management Table */}
       <div className="card">

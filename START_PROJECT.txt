@@ -1,0 +1,66 @@
+# STUDENT PLACEMENT MANAGEMENT PORTAL
+## How to Start the Project
+
+Last verified: 19 October 2026
+
+Project Location:
+D:\Student Placement Management Portal
+
+### STEP 1: Check MongoDB
+
+Open PowerShell and run:
+
+Get-Service MongoDB
+
+If the status is Running, continue to Step 2.
+
+If the status is Stopped, open PowerShell as Administrator and run:
+
+Start-Service MongoDB
+
+### STEP 2: Start the Backend
+
+Open Terminal 1 in VS Code or Antigravity and run:
+
+cd "D:\Student Placement Management Portal\server"
+npm start
+
+Keep this terminal open.
+
+Backend Port: 5000
+
+If the error EADDRINUSE appears, another process is already using port 5000. Check whether the existing backend is running before starting another one.
+
+### STEP 3: Start the Frontend
+
+Open Terminal 2 in VS Code or Antigravity and run:
+
+cd "D:\Student Placement Management Portal\client"
+npm run dev
+
+Keep this terminal open.
+
+Frontend URL:
+http://localhost:3000
+
+### STEP 4: Open the Application
+
+Open your browser and visit:
+
+http://localhost:3000/login
+
+Log in using your existing account.
+
+### IMPORTANT NOTES
+
+1. MongoDB stores the project's database locally.
+2. Keep both backend and frontend terminals open while using the application.
+3. Closing the browser does not necessarily stop the servers.
+4. After restarting the computer, check MongoDB and start the backend and frontend again.
+5. Do not delete the database, reset the database, or run seed scripts just to start the project.
+6. Do not terminate an existing process on port 5000 without checking what it is first.
+
+Project: Student Placement Management Portal
+Frontend: React + Vite
+Backend: Node.js + Express
+Database: MongoDB

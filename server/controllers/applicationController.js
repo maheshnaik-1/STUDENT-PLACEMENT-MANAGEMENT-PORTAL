@@ -624,6 +624,114 @@ const getPlacementStats = async (req, res, next) => {
       .sort({ appliedAt: -1 })
       .limit(6);
 
+    const totalTechnicalRound = await Application.countDocuments({ status: 'Technical Round' });
+    const totalInterview = await Application.countDocuments({ status: 'Interview' });
+    const totalApplied = await Application.countDocuments({ status: 'Applied' });
+    const totalRejected = await Application.countDocuments({ status: 'Rejected' });
+
+    // Recruitment Funnel Breakdown (Executive summary across whole portal)
+    const calcRate = (num, denom) =>
+      denom > 0 ? Number(((num / denom) * 100).toFixed(1)) : 0;
+
+    const stage1Count = totalApplications;
+    const stage2Count = await Application.countDocuments({
+      status: { $in: ['Shortlisted', 'Technical Round', 'Interview', 'Selected'] },
+    });
+    const stage3Count = await Application.countDocuments({
+      status: { $in: ['Technical Round', 'Interview', 'Selected'] },
+    });
+    const stage4Count = await Application.countDocuments({
+      status: { $in: ['Interview', 'Selected'] },
+    });
+    const stage5Count = totalSelected;
+
+    const recruitmentFunnel = {
+      stages: [
+        {
+          stageId: 'applied',
+          title: 'Applications Received',
+          shortLabel: 'Applied',
+          badge: 'Stage 1',
+          count: stage1Count,
+          percentageOfTotal: totalApplications > 0 ? 100 : 0,
+          conversionFromPrev: 100,
+          dropOffCount: Math.max(0, stage1Count - stage2Count),
+          dropOffRate: calcRate(Math.max(0, stage1Count - stage2Count), stage1Count),
+          color: '#2563eb',
+          bgColor: '#eff6ff',
+          borderColor: '#bfdbfe',
+          description: 'Total applications submitted across campus drives',
+        },
+        {
+          stageId: 'shortlisted',
+          title: 'Screening Cleared (Shortlisted+)',
+          shortLabel: 'Shortlisted',
+          badge: 'Stage 2',
+          count: stage2Count,
+          percentageOfTotal: calcRate(stage2Count, totalApplications),
+          conversionFromPrev: calcRate(stage2Count, stage1Count),
+          dropOffCount: Math.max(0, stage2Count - stage3Count),
+          dropOffRate: calcRate(Math.max(0, stage2Count - stage3Count), stage2Count),
+          color: '#d97706',
+          bgColor: '#fffbeb',
+          borderColor: '#fde68a',
+          description: 'Candidates meeting eligibility and advancing past screening',
+        },
+        {
+          stageId: 'technical',
+          title: 'Technical Evaluation (Tech Round+)',
+          shortLabel: 'Technical Round',
+          badge: 'Stage 3',
+          count: stage3Count,
+          percentageOfTotal: calcRate(stage3Count, totalApplications),
+          conversionFromPrev: calcRate(stage3Count, stage2Count),
+          dropOffCount: Math.max(0, stage3Count - stage4Count),
+          dropOffRate: calcRate(Math.max(0, stage3Count - stage4Count), stage3Count),
+          color: '#7c3aed',
+          bgColor: '#f5f3ff',
+          borderColor: '#ddd6fe',
+          description: 'Candidates evaluated in coding and technical rounds',
+        },
+        {
+          stageId: 'interview',
+          title: 'Formal Interview (Interview+)',
+          shortLabel: 'Interview',
+          badge: 'Stage 4',
+          count: stage4Count,
+          percentageOfTotal: calcRate(stage4Count, totalApplications),
+          conversionFromPrev: calcRate(stage4Count, stage3Count),
+          dropOffCount: Math.max(0, stage4Count - stage5Count),
+          dropOffRate: calcRate(Math.max(0, stage4Count - stage5Count), stage4Count),
+          color: '#4f46e5',
+          bgColor: '#eef2ff',
+          borderColor: '#c7d2fe',
+          description: 'Candidates appearing before technical and HR interview panels',
+        },
+        {
+          stageId: 'selected',
+          title: 'Offers Extended (Selected)',
+          shortLabel: 'Offers Extended',
+          badge: 'Stage 5',
+          count: stage5Count,
+          percentageOfTotal: calcRate(stage5Count, totalApplications),
+          conversionFromPrev: calcRate(stage5Count, stage4Count),
+          dropOffCount: 0,
+          dropOffRate: 0,
+          color: '#059669',
+          bgColor: '#ecfdf5',
+          borderColor: '#a7f3d0',
+          description: 'Confirmed placement offers extended to candidates',
+        },
+      ],
+      pipelineHealth: {
+        totalApplications,
+        activeInReview: totalApplications - (totalSelected + totalRejected),
+        offersExtended: totalSelected,
+        rejected: totalRejected,
+        overallConversionRate: calcRate(totalSelected, totalApplications),
+      },
+    };
+
     res.status(200).json({
       success: true,
       data: {
@@ -634,10 +742,15 @@ const getPlacementStats = async (req, res, next) => {
         totalApplications,
         totalSelected,
         totalShortlisted,
+        totalTechnicalRound,
+        totalInterview,
+        totalApplied,
+        totalRejected,
         placementRate:
           totalStudents > 0
             ? Math.round((totalSelected / totalStudents) * 100)
             : 0,
+        recruitmentFunnel,
         branchStats,
         placedStudents,
         companyHires,
@@ -747,7 +860,8 @@ const getOfficerAnalytics = async (req, res, next) => {
     const totalInterview = applications.filter((a) => a.status === 'Interview').length;
     const totalApplied = applications.filter((a) => a.status === 'Applied').length;
     const totalRejected = applications.filter((a) => a.status === 'Rejected').length;
-    const totalUnderReview = totalApplied + totalTechnicalRound + totalInterview;
+    const totalUnderReview =
+      totalApplied + totalShortlisted + totalTechnicalRound + totalInterview;
 
     // Unique students who received at least one selection offer in this filtered dataset
     const uniqueSelectedStudentIds = new Set(
@@ -782,11 +896,228 @@ const getOfficerAnalytics = async (req, res, next) => {
       };
     });
 
+    // Helper for safe rate calculation
+    const calcRate = (num, denom) =>
+      denom > 0 ? Number(((num / denom) * 100).toFixed(1)) : 0;
+
+    // Visual Recruitment Funnel Definition (Progressive math-based stages derived strictly from MongoDB data)
+    // Stage 1: Applications Received
+    const stage1Count = totalApplications;
+    // Stage 2: Screening Cleared (Shortlisted and advanced)
+    const stage2Count = applications.filter((a) =>
+      ['Shortlisted', 'Technical Round', 'Interview', 'Selected'].includes(a.status)
+    ).length;
+    // Stage 3: Technical Round and advanced
+    const stage3Count = applications.filter((a) =>
+      ['Technical Round', 'Interview', 'Selected'].includes(a.status)
+    ).length;
+    // Stage 4: Formal Interview and advanced
+    const stage4Count = applications.filter((a) =>
+      ['Interview', 'Selected'].includes(a.status)
+    ).length;
+    // Stage 5: Offers Extended (Selected)
+    const stage5Count = totalSelected;
+
+    const stage1DropOff = Math.max(0, stage1Count - stage2Count);
+    const stage2DropOff = Math.max(0, stage2Count - stage3Count);
+    const stage3DropOff = Math.max(0, stage3Count - stage4Count);
+    const stage4DropOff = Math.max(0, stage4Count - stage5Count);
+
+    const recruitmentFunnel = {
+      stages: [
+        {
+          stageId: 'applied',
+          title: 'Applications Received',
+          shortLabel: 'Applied',
+          badge: 'Stage 1',
+          count: stage1Count,
+          percentageOfTotal: totalApplications > 0 ? 100 : 0,
+          conversionFromPrev: 100,
+          dropOffCount: stage1DropOff,
+          dropOffRate: calcRate(stage1DropOff, stage1Count),
+          color: '#2563eb',
+          bgColor: '#eff6ff',
+          borderColor: '#bfdbfe',
+          description: 'Total student applications submitted within selected scope',
+        },
+        {
+          stageId: 'shortlisted',
+          title: 'Screening Cleared (Shortlisted+)',
+          shortLabel: 'Shortlisted',
+          badge: 'Stage 2',
+          count: stage2Count,
+          percentageOfTotal: calcRate(stage2Count, totalApplications),
+          conversionFromPrev: calcRate(stage2Count, stage1Count),
+          dropOffCount: stage2DropOff,
+          dropOffRate: calcRate(stage2DropOff, stage2Count),
+          color: '#d97706',
+          bgColor: '#fffbeb',
+          borderColor: '#fde68a',
+          description: 'Candidates meeting eligibility criteria and clearing profile screening',
+        },
+        {
+          stageId: 'technical',
+          title: 'Technical Evaluation (Tech Round+)',
+          shortLabel: 'Technical Round',
+          badge: 'Stage 3',
+          count: stage3Count,
+          percentageOfTotal: calcRate(stage3Count, totalApplications),
+          conversionFromPrev: calcRate(stage3Count, stage2Count),
+          dropOffCount: stage3DropOff,
+          dropOffRate: calcRate(stage3DropOff, stage3Count),
+          color: '#7c3aed',
+          bgColor: '#f5f3ff',
+          borderColor: '#ddd6fe',
+          description: 'Candidates evaluated in coding and technical assessments',
+        },
+        {
+          stageId: 'interview',
+          title: 'Formal Interview (Interview+)',
+          shortLabel: 'Interview',
+          badge: 'Stage 4',
+          count: stage4Count,
+          percentageOfTotal: calcRate(stage4Count, totalApplications),
+          conversionFromPrev: calcRate(stage4Count, stage3Count),
+          dropOffCount: stage4DropOff,
+          dropOffRate: calcRate(stage4DropOff, stage4Count),
+          color: '#4f46e5',
+          bgColor: '#eef2ff',
+          borderColor: '#c7d2fe',
+          description: 'Candidates appearing before technical and leadership interview panels',
+        },
+        {
+          stageId: 'selected',
+          title: 'Offers Extended (Selected)',
+          shortLabel: 'Offers Extended',
+          badge: 'Stage 5',
+          count: stage5Count,
+          percentageOfTotal: calcRate(stage5Count, totalApplications),
+          conversionFromPrev: calcRate(stage5Count, stage4Count),
+          dropOffCount: 0,
+          dropOffRate: 0,
+          color: '#059669',
+          bgColor: '#ecfdf5',
+          borderColor: '#a7f3d0',
+          description: 'Confirmed placement offers extended to candidates',
+        },
+      ],
+      pipelineHealth: {
+        totalApplications,
+        activeInReview: applications.filter((a) =>
+          ['Applied', 'Shortlisted', 'Technical Round', 'Interview'].includes(a.status)
+        ).length,
+        offersExtended: totalSelected,
+        rejected: totalRejected,
+        overallConversionRate: selectionRate,
+      },
+    };
+
+    // Helper to safely parse package CTC in LPA
+    const parsePackageLPA = (pkgString) => {
+      if (!pkgString || typeof pkgString !== 'string') return 0;
+      const numbers = pkgString.match(/\d+(?:\.\d+)?/g);
+      if (!numbers || numbers.length === 0) return 0;
+      const floatVals = numbers.map(Number).filter((n) => !isNaN(n));
+      return floatVals.length > 0 ? Math.max(...floatVals) : 0;
+    };
+
     // Drive-Wise Analytics
     const targetDrives =
       driveId && driveId !== 'ALL'
         ? allDrives.filter((d) => d._id.toString() === driveId.toString())
         : allDrives;
+
+    // Salary Analytics for Selected Candidates in Current Filter
+    const selectedApplications = applications.filter((a) => a.status === 'Selected');
+    const selectedSalaryValues = selectedApplications
+      .map((a) => ({
+        applicationId: a._id,
+        studentName: a.student?.name || 'Student',
+        rollNo: a.student?.rollNo || 'N/A',
+        branch: a.student?.branch || 'N/A',
+        companyName: a.drive?.company?.name || 'Company',
+        driveTitle: a.drive?.title || 'Drive',
+        packageCTC: a.drive?.packageCTC || 'N/A',
+        lpa: parsePackageLPA(a.drive?.packageCTC),
+      }))
+      .filter((s) => s.lpa > 0);
+
+    const lpaList = selectedSalaryValues.map((s) => s.lpa).sort((a, b) => a - b);
+    const hasOffers = lpaList.length > 0;
+    const highestLPA = hasOffers ? Math.max(...lpaList) : 0;
+    const lowestLPA = hasOffers ? Math.min(...lpaList) : 0;
+    const averageLPA = hasOffers
+      ? Number((lpaList.reduce((acc, v) => acc + v, 0) / lpaList.length).toFixed(2))
+      : 0;
+
+    let medianLPA = 0;
+    if (hasOffers) {
+      const mid = Math.floor(lpaList.length / 2);
+      medianLPA =
+        lpaList.length % 2 !== 0
+          ? lpaList[mid]
+          : Number(((lpaList[mid - 1] + lpaList[mid]) / 2).toFixed(2));
+    }
+
+    const allDrivesWithLPA = targetDrives.map((d) => ({
+      _id: d._id,
+      title: d.title,
+      packageCTC: d.packageCTC,
+      lpa: parsePackageLPA(d.packageCTC),
+    }));
+
+    const superDreamDrives = allDrivesWithLPA.filter((d) => d.lpa >= 15);
+    const dreamDrives = allDrivesWithLPA.filter((d) => d.lpa >= 8 && d.lpa < 15);
+    const coreDrives = allDrivesWithLPA.filter((d) => d.lpa > 0 && d.lpa < 8);
+
+    const superDreamOffers = selectedSalaryValues.filter((s) => s.lpa >= 15);
+    const dreamOffers = selectedSalaryValues.filter((s) => s.lpa >= 8 && s.lpa < 15);
+    const coreOffers = selectedSalaryValues.filter((s) => s.lpa > 0 && s.lpa < 8);
+
+    const salaryAnalytics = {
+      hasOffers,
+      offersCount: selectedSalaryValues.length,
+      highestLPA,
+      lowestLPA,
+      averageLPA,
+      medianLPA,
+      tiers: [
+        {
+          tierId: 'super-dream',
+          label: 'Super Dream (≥ 15 LPA)',
+          threshold: '≥ 15 LPA',
+          color: '#7c3aed',
+          bgColor: '#f5f3ff',
+          borderColor: '#ddd6fe',
+          drivesCount: superDreamDrives.length,
+          offersCount: superDreamOffers.length,
+          offersPercentage: hasOffers ? calcRate(superDreamOffers.length, lpaList.length) : 0,
+        },
+        {
+          tierId: 'dream',
+          label: 'Dream (8 - 14.9 LPA)',
+          threshold: '8 - 14.9 LPA',
+          color: '#2563eb',
+          bgColor: '#eff6ff',
+          borderColor: '#bfdbfe',
+          drivesCount: dreamDrives.length,
+          offersCount: dreamOffers.length,
+          offersPercentage: hasOffers ? calcRate(dreamOffers.length, lpaList.length) : 0,
+        },
+        {
+          tierId: 'core-mass',
+          label: 'Core / Mass (< 8 LPA)',
+          threshold: '< 8 LPA',
+          color: '#059669',
+          bgColor: '#ecfdf5',
+          borderColor: '#a7f3d0',
+          drivesCount: coreDrives.length,
+          offersCount: coreOffers.length,
+          offersPercentage: hasOffers ? calcRate(coreOffers.length, lpaList.length) : 0,
+        },
+      ],
+      topOffers: [...selectedSalaryValues].sort((a, b) => b.lpa - a.lpa),
+    };
 
     const driveAnalytics = targetDrives.map((d) => {
       const driveApps = applications.filter(
@@ -813,7 +1144,7 @@ const getOfficerAnalytics = async (req, res, next) => {
         selectedCount: selCount,
         rejectedCount: driveApps.filter((a) => a.status === 'Rejected').length,
         underReviewCount: driveApps.filter((a) =>
-          ['Applied', 'Technical Round', 'Interview'].includes(a.status)
+          ['Applied', 'Shortlisted', 'Technical Round', 'Interview'].includes(a.status)
         ).length,
         selectionRate: selRate,
       };
@@ -861,18 +1192,36 @@ const getOfficerAnalytics = async (req, res, next) => {
       else if (a.status === 'Selected') branchMap[b].selectedCount += 1;
       else if (a.status === 'Rejected') branchMap[b].rejectedCount += 1;
 
-      if (['Applied', 'Technical Round', 'Interview'].includes(a.status)) {
+      if (['Applied', 'Shortlisted', 'Technical Round', 'Interview'].includes(a.status)) {
         branchMap[b].underReviewCount += 1;
       }
     });
 
-    let branchAnalytics = Object.values(branchMap).map((b) => ({
-      ...b,
-      selectionRate:
-        b.applicationsCount > 0
-          ? Number(((b.selectedCount / b.applicationsCount) * 100).toFixed(1))
-          : 0,
-    }));
+    // Branch unique placement tracking
+    const branchPlacedStudentMap = {};
+    applications.forEach((a) => {
+      if (a.status === 'Selected' && a.student) {
+        const b = a.student.branch || 'Unknown';
+        if (!branchPlacedStudentMap[b]) branchPlacedStudentMap[b] = new Set();
+        branchPlacedStudentMap[b].add(a.student._id?.toString() || a.student.toString());
+      }
+    });
+
+    let branchAnalytics = Object.values(branchMap).map((b) => {
+      const placedUnique = branchPlacedStudentMap[b.branch]?.size || 0;
+      return {
+        ...b,
+        placedStudentsCount: placedUnique,
+        placementRate:
+          b.totalStudents > 0
+            ? Number(((placedUnique / b.totalStudents) * 100).toFixed(1))
+            : 0,
+        selectionRate:
+          b.applicationsCount > 0
+            ? Number(((b.selectedCount / b.applicationsCount) * 100).toFixed(1))
+            : 0,
+      };
+    });
 
     if (branch && branch !== 'ALL') {
       branchAnalytics = branchAnalytics.filter((b) => b.branch === branch);
@@ -983,6 +1332,8 @@ const getOfficerAnalytics = async (req, res, next) => {
           studentPlacementRate,
         },
         statusDistribution,
+        recruitmentFunnel,
+        salaryAnalytics,
         driveAnalytics,
         branchAnalytics,
         recentApplications,
