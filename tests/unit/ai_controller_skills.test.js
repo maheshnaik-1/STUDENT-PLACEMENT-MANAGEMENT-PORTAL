@@ -248,6 +248,7 @@ function runTests() {
         assert(result.extractedSkills.includes('Java'), 'Extracts Java from resume');
         assert(result.extractedSkills.includes('JavaScript'), 'Extracts JavaScript from resume');
         assert(result.contactInfo && result.contactInfo.email, 'Extracts contact email');
+        assert(Array.isArray(result.suggestions) && result.suggestions.length > 0, 'Extracts suggestions array with non-zero items');
         printSummary();
       })
       .catch((err) => {

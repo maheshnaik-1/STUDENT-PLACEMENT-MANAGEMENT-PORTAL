@@ -14,6 +14,9 @@ import {
   ExternalLink,
   ShieldCheck,
   RefreshCw,
+  Lightbulb,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 
 const ResumeAnalysisModal = ({
@@ -25,6 +28,7 @@ const ResumeAnalysisModal = ({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState(null);
   const [error, setError] = useState(null);
+  const [suggestionFilter, setSuggestionFilter] = useState('all');
 
   const hasResume = Boolean(user?.resumeFile && user.resumeFile.filename);
 
@@ -343,6 +347,274 @@ const ResumeAnalysisModal = ({
                   <span>All technical skills detected in your resume are already in your career profile!</span>
                 </div>
               )}
+            </div>
+
+            {/* Resume Improvement & Formatting Suggestions */}
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '1rem 1.1rem',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+              }}
+            >
+              {(() => {
+                const suggestions = Array.isArray(analysisData?.suggestions)
+                  ? analysisData.suggestions
+                  : [];
+                const actionableSuggestions = suggestions.filter((s) => !s.isPositive);
+                const positiveSuggestions = suggestions.filter((s) => s.isPositive);
+                const displayedSuggestions =
+                  suggestionFilter === 'actionable'
+                    ? actionableSuggestions
+                    : suggestionFilter === 'positive'
+                      ? positiveSuggestions
+                      : suggestions;
+
+                return (
+                  <>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '0.65rem',
+                        marginBottom: '0.85rem',
+                        paddingBottom: '0.65rem',
+                        borderBottom: '1px solid #f1f5f9',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '6px',
+                            background: '#fef3c7',
+                            color: '#d97706',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Lightbulb size={16} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>
+                            Resume Improvement & Structure Analysis
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            Deterministic layout audits, length feedback, and campus drive alignment.
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Filter Controls */}
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          background: '#f1f5f9',
+                          padding: '2px',
+                          borderRadius: '6px',
+                          gap: '2px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSuggestionFilter('all')}
+                          style={{
+                            border: 'none',
+                            background: suggestionFilter === 'all' ? '#ffffff' : 'transparent',
+                            color: suggestionFilter === 'all' ? '#1e293b' : '#64748b',
+                            fontWeight: suggestionFilter === 'all' ? 700 : 500,
+                            fontSize: '0.75rem',
+                            padding: '0.25rem 0.55rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            boxShadow: suggestionFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                          }}
+                        >
+                          All ({suggestions.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSuggestionFilter('actionable')}
+                          style={{
+                            border: 'none',
+                            background: suggestionFilter === 'actionable' ? '#ffffff' : 'transparent',
+                            color: suggestionFilter === 'actionable' ? '#b45309' : '#64748b',
+                            fontWeight: suggestionFilter === 'actionable' ? 700 : 500,
+                            fontSize: '0.75rem',
+                            padding: '0.25rem 0.55rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            boxShadow:
+                              suggestionFilter === 'actionable' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                          }}
+                        >
+                          Actionable ({actionableSuggestions.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSuggestionFilter('positive')}
+                          style={{
+                            border: 'none',
+                            background: suggestionFilter === 'positive' ? '#ffffff' : 'transparent',
+                            color: suggestionFilter === 'positive' ? '#15803d' : '#64748b',
+                            fontWeight: suggestionFilter === 'positive' ? 700 : 500,
+                            fontSize: '0.75rem',
+                            padding: '0.25rem 0.55rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            boxShadow:
+                              suggestionFilter === 'positive' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                          }}
+                        >
+                          Strengths ({positiveSuggestions.length})
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Suggestions Cards List */}
+                    {displayedSuggestions.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                        {displayedSuggestions.map((item, idx) => {
+                          const isPos = Boolean(item.isPositive);
+                          const isWarn = item.severity === 'warning';
+                          const cardBg = isPos ? '#f0fdf4' : isWarn ? '#fffbeb' : '#f8fafc';
+                          const cardBorder = isPos ? '#bbf7d0' : isWarn ? '#fde68a' : '#e2e8f0';
+                          const titleColor = isPos ? '#166534' : isWarn ? '#92400e' : '#1e3a8a';
+                          const badgeBg = isPos ? '#dcfce7' : isWarn ? '#fef3c7' : '#eff6ff';
+                          const badgeColor = isPos ? '#15803d' : isWarn ? '#b45309' : '#2563eb';
+                          const badgeLabel = isPos
+                            ? 'Strength'
+                            : isWarn
+                              ? 'Action Recommended'
+                              : 'Consideration';
+
+                          return (
+                            <div
+                              key={item.id || idx}
+                              style={{
+                                background: cardBg,
+                                border: `1px solid ${cardBorder}`,
+                                borderRadius: '8px',
+                                padding: '0.75rem 0.85rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.35rem',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '0.4rem',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                  {isPos ? (
+                                    <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+                                  ) : isWarn ? (
+                                    <AlertTriangle size={16} color="#d97706" style={{ flexShrink: 0 }} />
+                                  ) : (
+                                    <Info size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+                                  )}
+                                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: titleColor }}>
+                                    {item.title}
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {item.category && (
+                                    <span
+                                      style={{
+                                        fontSize: '0.675rem',
+                                        fontWeight: 700,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.4px',
+                                        background: '#ffffff',
+                                        color: '#64748b',
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid #e2e8f0',
+                                      }}
+                                    >
+                                      {item.category}
+                                    </span>
+                                  )}
+                                  <span
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: 700,
+                                      background: badgeBg,
+                                      color: badgeColor,
+                                      padding: '0.15rem 0.45rem',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {badgeLabel}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: '0.8rem',
+                                  color: '#334155',
+                                  lineHeight: 1.45,
+                                }}
+                              >
+                                {item.explanation}
+                              </p>
+
+                              {item.recommendation && (
+                                <div
+                                  style={{
+                                    marginTop: '0.15rem',
+                                    background: '#ffffff',
+                                    border: `1px dashed ${cardBorder}`,
+                                    borderRadius: '6px',
+                                    padding: '0.45rem 0.65rem',
+                                    fontSize: '0.775rem',
+                                    color: '#1e293b',
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  <strong style={{ color: titleColor }}>Recommendation: </strong>
+                                  <span>{item.recommendation}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          padding: '1.25rem',
+                          background: '#f8fafc',
+                          borderRadius: '6px',
+                          color: '#64748b',
+                          fontSize: '0.825rem',
+                        }}
+                      >
+                        {suggestionFilter === 'actionable'
+                          ? 'No actionable issues detected! All audited areas meet placement standards.'
+                          : suggestionFilter === 'positive'
+                            ? 'No verified strength highlights in this view.'
+                            : 'No specific formatting or section improvements detected. Your resume conforms to standard conventions.'}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* All Extracted Resume Skills */}

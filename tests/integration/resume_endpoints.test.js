@@ -42,7 +42,7 @@ async function run() {
   await mongoose.connect('mongodb://127.0.0.1:27017/placement_portal');
   const user = await mongoose.connection.db
     .collection('users')
-    .findOne({ role: 'student', email: 'rahul.cse@college.edu' }, { projection: { _id: 1, name: 1, role: 1 } });
+    .findOne({ role: 'student', email: 'rahul.cse@college.edu' }, { projection: { _id: 1, name: 1, role: 1, skills: 1 } });
 
   if (!user) {
     console.error('Student user not found.');
@@ -60,6 +60,22 @@ async function run() {
 
   const authHeader = { Authorization: `Bearer ${token}` };
 
+  // Validate suggestion schema helper
+  const validateSuggestions = (suggestions) => {
+    if (!Array.isArray(suggestions) || suggestions.length === 0) return false;
+    return suggestions.every(
+      (s) =>
+        typeof s.id === 'string' &&
+        typeof s.category === 'string' &&
+        typeof s.type === 'string' &&
+        typeof s.title === 'string' &&
+        typeof s.explanation === 'string' &&
+        typeof s.recommendation === 'string' &&
+        typeof s.isPositive === 'boolean' &&
+        ['success', 'info', 'warning'].includes(s.severity)
+    );
+  };
+
   // Test 1: Direct backend on port 5000
   console.log('1. Testing Direct Backend: POST http://localhost:5000/api/ai/parse-resume');
   try {
@@ -70,8 +86,15 @@ async function run() {
     console.log(`   New Skills Count: ${resBackend.body?.data?.newSkillsFound?.length}`);
     console.log(`   Current Profile Skills Count: ${resBackend.body?.data?.currentProfileSkills?.length}`);
     console.log(`   Word Count: ${resBackend.body?.data?.wordCount}`);
+    console.log(`   Suggestions Count: ${resBackend.body?.data?.suggestions?.length}`);
+
     if (resBackend.statusCode !== 200 || !resBackend.body?.success) {
       console.error('   FAILED: Expected 200 OK from backend.');
+      process.exit(1);
+    }
+
+    if (!validateSuggestions(resBackend.body?.data?.suggestions)) {
+      console.error('   FAILED: suggestions array missing or invalid schema on backend.');
       process.exit(1);
     }
   } catch (err) {
@@ -89,14 +112,34 @@ async function run() {
     console.log(`   New Skills Count: ${resProxy.body?.data?.newSkillsFound?.length}`);
     console.log(`   Current Profile Skills Count: ${resProxy.body?.data?.currentProfileSkills?.length}`);
     console.log(`   Word Count: ${resProxy.body?.data?.wordCount}`);
+    console.log(`   Suggestions Count: ${resProxy.body?.data?.suggestions?.length}`);
+
     if (resProxy.statusCode !== 200 || !resProxy.body?.success) {
       console.error('   FAILED: Expected 200 OK from Vite proxy.');
+      process.exit(1);
+    }
+
+    if (!validateSuggestions(resProxy.body?.data?.suggestions)) {
+      console.error('   FAILED: suggestions array missing or invalid schema on Vite proxy.');
       process.exit(1);
     }
   } catch (err) {
     console.error('   Error contacting Vite proxy:', err.message);
     process.exit(1);
   }
+
+  // Verify student profile skills in Mongo remain completely unmodified
+  await mongoose.connect('mongodb://127.0.0.1:27017/placement_portal');
+  const userAfter = await mongoose.connection.db
+    .collection('users')
+    .findOne({ _id: user._id });
+  await mongoose.disconnect();
+
+  if (JSON.stringify(userAfter.skills) !== JSON.stringify(user.skills)) {
+    console.error('   FAILED: Student profile skills were unexpectedly modified in MongoDB.');
+    process.exit(1);
+  }
+  console.log('\n   Zero-Mutation Verified: Student profile skills in MongoDB remain identical before & after.');
 
   console.log('\nAll endpoint tests succeeded cleanly with status 200 OK.');
 }

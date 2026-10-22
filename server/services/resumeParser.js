@@ -197,6 +197,418 @@ function extractContactInfo(text) {
 }
 
 /**
+ * Deterministically analyzes extracted resume text, contact info, and skill gaps
+ * to produce actionable resume improvement suggestions and positive findings.
+ *
+ * @param {Object} params
+ * @param {string} params.text - Raw extracted resume text
+ * @param {string[]} [params.extractedSkills] - Skills found in resume
+ * @param {Object} [params.contactInfo] - Extracted contact information
+ * @param {number} [params.wordCount] - Extracted word count
+ * @param {string[]} [params.activeDriveSkills] - Skills frequently required by active campus drives
+ * @returns {Array<Object>} List of structured suggestions
+ */
+function generateResumeSuggestions({
+  text = '',
+  extractedSkills = [],
+  contactInfo = null,
+  wordCount = 0,
+  activeDriveSkills = [],
+} = {}) {
+  const suggestions = [];
+
+  const rawText = typeof text === 'string' ? text.trim() : '';
+  const calculatedWords =
+    wordCount > 0
+      ? wordCount
+      : rawText
+        ? rawText.split(/\s+/).filter(Boolean).length
+        : 0;
+
+  // 1. Guard against empty or unextractable text
+  if (!rawText || calculatedWords === 0) {
+    suggestions.push({
+      id: 'doc-empty',
+      category: 'content',
+      type: 'empty_document',
+      title: 'No Extractable Text Detected',
+      explanation:
+        'The resume file appears to have no readable text layers. It may be a scanned image, blank page, or corrupted document.',
+      recommendation:
+        'Export your resume directly as a text-based PDF (from Microsoft Word, Google Docs, or LaTeX) rather than an image scan so applicant tracking systems can index it.',
+      isPositive: false,
+      severity: 'warning',
+    });
+    return suggestions;
+  }
+
+  // Derive skills and contact info defensively if not provided
+  const skills =
+    Array.isArray(extractedSkills) && extractedSkills.length > 0
+      ? extractedSkills
+      : extractSkillsFromText(rawText);
+
+  const contact =
+    contactInfo && typeof contactInfo === 'object'
+      ? contactInfo
+      : extractContactInfo(rawText);
+
+  // Helper to detect section headings deterministically
+  const hasSection = (synonyms) => {
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    for (const syn of synonyms) {
+      const exactHeading = new RegExp(`^[#*\\-\\d.\\s]*${syn}[:\\s*#\\-–—|]*$`, 'i');
+      const inlineHeading = new RegExp(`^[#*\\-\\d.\\s]*${syn}\\s*[:\\-–—]`, 'i');
+      const shortLineWordBoundary = new RegExp(`\\b${syn}\\b`, 'i');
+
+      for (const line of lines) {
+        if (exactHeading.test(line) || inlineHeading.test(line)) {
+          return true;
+        }
+        if (line.length <= 40 && shortLineWordBoundary.test(line)) {
+          const words = line.split(/\s+/);
+          if (!line.endsWith('.') && words.length <= 5) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // 2. Section Heading Audits
+  // Education Section
+  const educationSynonyms = [
+    'education',
+    'educational background',
+    'academic background',
+    'academics',
+    'academic qualifications',
+    'qualifications',
+    'scholastic record',
+    'scholastic achievements',
+    'degrees',
+  ];
+  if (hasSection(educationSynonyms)) {
+    suggestions.push({
+      id: 'section-education',
+      category: 'structure',
+      type: 'section_present',
+      title: 'Education Section Present',
+      explanation: 'An Education or Academic Qualifications section heading was identified.',
+      recommendation:
+        'Ensure your degree, institution name, major, CGPA/percentage, and expected graduation year are clearly visible.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    suggestions.push({
+      id: 'section-education',
+      category: 'structure',
+      type: 'section_missing',
+      title: 'Missing Education Section',
+      explanation: 'No distinct Education or Academic Background section heading was detected.',
+      recommendation:
+        'Add a dedicated Education section listing your current degree, college name, branch, graduation year, and CGPA.',
+      isPositive: false,
+      severity: 'warning',
+    });
+  }
+
+  // Projects Section
+  const projectsSynonyms = [
+    'projects',
+    'academic projects',
+    'technical projects',
+    'personal projects',
+    'coursework projects',
+    'key projects',
+    'selected projects',
+    'capstone project',
+    'major projects',
+  ];
+  if (hasSection(projectsSynonyms)) {
+    suggestions.push({
+      id: 'section-projects',
+      category: 'structure',
+      type: 'section_present',
+      title: 'Projects Section Present',
+      explanation: 'A dedicated Projects section was identified in your resume.',
+      recommendation:
+        'Highlight 2-3 key technical projects with bullet points detailing the problem, stack, and measurable impact.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    suggestions.push({
+      id: 'section-projects',
+      category: 'structure',
+      type: 'section_missing',
+      title: 'Missing Projects Section',
+      explanation: 'No dedicated Projects section heading was detected in the document.',
+      recommendation:
+        'Include a Projects section showcasing software, hardware, or research work with technologies used and GitHub links.',
+      isPositive: false,
+      severity: 'warning',
+    });
+  }
+
+  // Experience / Internships Section (Carefully tailored for student level)
+  const experienceSynonyms = [
+    'experience',
+    'work experience',
+    'employment history',
+    'internships',
+    'internship experience',
+    'professional experience',
+    'work history',
+    'practical training',
+    'industrial training',
+    'relevant experience',
+    'apprenticeship',
+  ];
+  if (hasSection(experienceSynonyms)) {
+    suggestions.push({
+      id: 'section-experience',
+      category: 'structure',
+      type: 'section_present',
+      title: 'Experience / Internship Section Present',
+      explanation: 'An Experience, Internship, or Industrial Training section was detected.',
+      recommendation:
+        'Use action verbs (e.g., Developed, Optimized, Integrated) and quantify results where possible.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    suggestions.push({
+      id: 'section-experience',
+      category: 'structure',
+      type: 'section_missing',
+      title: 'No Experience / Internship Section Detected',
+      explanation: 'No formal Experience or Internship section heading was detected in the document.',
+      recommendation:
+        'If you have completed internships, open-source work, or campus leadership roles, add an Experience section. If you are a fresher without prior internships, expand your Projects and Technical Skills sections.',
+      isPositive: false,
+      severity: 'info',
+    });
+  }
+
+  // Technical Skills Section
+  const skillsSynonyms = [
+    'skills',
+    'technical skills',
+    'technologies',
+    'core competencies',
+    'key skills',
+    'skillset',
+    'areas of expertise',
+    'programming skills',
+    'tools & technologies',
+    'competencies',
+  ];
+  if (hasSection(skillsSynonyms)) {
+    suggestions.push({
+      id: 'section-skills',
+      category: 'structure',
+      type: 'section_present',
+      title: 'Technical Skills Section Present',
+      explanation: 'A dedicated Skills or Technical Competencies section heading was identified.',
+      recommendation:
+        'Group skills by categories (e.g., Languages, Frameworks, Databases, Developer Tools) for fast recruiter scanning.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    suggestions.push({
+      id: 'section-skills',
+      category: 'structure',
+      type: 'section_missing',
+      title: 'Missing Dedicated Skills Section',
+      explanation: 'No distinct Technical Skills or Competencies section heading was detected.',
+      recommendation:
+        'Create a categorized Technical Skills section listing your programming languages, frameworks, and developer tools.',
+      isPositive: false,
+      severity: 'warning',
+    });
+  }
+
+  // 3. Length / Word Count Feedback
+  if (calculatedWords < 150) {
+    suggestions.push({
+      id: 'length-short',
+      category: 'length',
+      type: 'length',
+      title: 'Resume Content is Very Brief',
+      explanation: `Extracted length is ${calculatedWords} words. Resumes with fewer than 150 words often lack adequate detail on technical projects, coursework, or responsibilities.`,
+      recommendation:
+        'Expand on your project architectures, tools utilized, and specific contributions to reach 200–500 words.',
+      isPositive: false,
+      severity: 'warning',
+    });
+  } else if (calculatedWords <= 650) {
+    suggestions.push({
+      id: 'length-optimal',
+      category: 'length',
+      type: 'length',
+      title: 'Optimal Resume Length',
+      explanation: `Extracted length is ${calculatedWords} words, which fits cleanly within the standard single-page target (150–650 words) for undergraduate placements.`,
+      recommendation:
+        'Maintain crisp bullet points and consistent formatting to ensure effortless readability during campus screenings.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else if (calculatedWords <= 850) {
+    suggestions.push({
+      id: 'length-dense',
+      category: 'length',
+      type: 'length',
+      title: 'Dense Resume Content',
+      explanation: `Extracted length is ${calculatedWords} words. This is on the longer side for a fresher resume and may risk crowding the page or overflowing into a second sheet.`,
+      recommendation:
+        'Ensure your margins, line spacing, and font size remain readable, or trim older high school details to keep it strictly 1 page.',
+      isPositive: false,
+      severity: 'info',
+    });
+  } else {
+    suggestions.push({
+      id: 'length-long',
+      category: 'length',
+      type: 'length',
+      title: 'Resume is Unusually Long',
+      explanation: `Extracted length is ${calculatedWords} words. Campus placement recruiters typically spend 20–30 seconds skimming fresh graduate resumes and strongly favor a concise 1-page profile.`,
+      recommendation:
+        'Condense older, duplicate, or secondary coursework details into high-impact bullet points to avoid multi-page sprawl.',
+      isPositive: false,
+      severity: 'warning',
+    });
+  }
+
+  // 4. Contact Information Audits
+  const hasEmail = Boolean(contact?.email);
+  const hasPhone = Boolean(contact?.phone);
+  const links = Array.isArray(contact?.links) ? contact.links : [];
+
+  if (hasEmail && hasPhone) {
+    suggestions.push({
+      id: 'contact-complete',
+      category: 'contact',
+      type: 'contact_info',
+      title: 'Essential Contact Details Detected',
+      explanation: `Identified reachable contact email (${contact.email}) and phone number (${contact.phone}).`,
+      recommendation:
+        'Ensure contact details remain at the top header of the resume where recruiters expect them.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    if (!hasEmail) {
+      suggestions.push({
+        id: 'contact-missing-email',
+        category: 'contact',
+        type: 'contact_info',
+        title: 'Missing Contact Email',
+        explanation: 'No valid email address was detected in the document text.',
+        recommendation:
+          'Add a professional email address (college institutional or personal) in the header.',
+        isPositive: false,
+        severity: 'warning',
+      });
+    }
+    if (!hasPhone) {
+      suggestions.push({
+        id: 'contact-missing-phone',
+        category: 'contact',
+        type: 'contact_info',
+        title: 'Missing Phone Number',
+        explanation: 'No phone number was identified in the resume text.',
+        recommendation:
+          'Include an active 10-digit mobile number with country code in your header.',
+        isPositive: false,
+        severity: 'warning',
+      });
+    }
+  }
+
+  // Professional Links (GitHub / LinkedIn)
+  if (links.length > 0) {
+    suggestions.push({
+      id: 'contact-links-present',
+      category: 'contact',
+      type: 'contact_links',
+      title: 'Professional Profiles Linked',
+      explanation: `Identified ${links.length} portfolio link(s): ${links.join(', ')}.`,
+      recommendation:
+        'Verify that your linked profiles are active, have professional photos, and showcase clean project repositories.',
+      isPositive: true,
+      severity: 'success',
+    });
+  } else {
+    suggestions.push({
+      id: 'contact-links-missing',
+      category: 'contact',
+      type: 'contact_links',
+      title: 'Consider Adding GitHub or LinkedIn Profiles',
+      explanation: 'No GitHub or LinkedIn profile links were found in the resume.',
+      recommendation:
+        'Include hyperlinks to your LinkedIn profile and GitHub portfolio to allow recruiters to review your code and professional background.',
+      isPositive: false,
+      severity: 'info',
+    });
+  }
+
+  // 5. Active Drive Skills Gap Feedback
+  if (Array.isArray(activeDriveSkills) && activeDriveSkills.length > 0) {
+    const resumeSkillSet = new Set(
+      skills.map((s) => (typeof s === 'string' ? s.trim().toLowerCase() : ''))
+    );
+
+    // Identify active drive skills missing from the resume
+    const missingDriveSkills = [];
+    for (const driveSkill of activeDriveSkills) {
+      if (typeof driveSkill === 'string' && driveSkill.trim()) {
+        const cleanSkill = driveSkill.trim();
+        if (!resumeSkillSet.has(cleanSkill.toLowerCase())) {
+          missingDriveSkills.push(cleanSkill);
+        }
+      }
+    }
+
+    if (missingDriveSkills.length > 0) {
+      const topMissing = missingDriveSkills.slice(0, 4);
+      suggestions.push({
+        id: 'skills-drive-gap',
+        category: 'skills',
+        type: 'skills_gap',
+        title: 'In-Demand Campus Skills Gap',
+        explanation: `Active campus placement drives frequently seek ${topMissing.join(
+          ', '
+        )}, which were not identified in your resume text.`,
+        recommendation: `If you have coursework, project, or certification experience with any of these (${topMissing.join(
+          ', '
+        )}), incorporate them into your Skills or Projects sections to increase recruiter match scores.`,
+        isPositive: false,
+        severity: 'info',
+      });
+    } else {
+      suggestions.push({
+        id: 'skills-drive-match',
+        category: 'skills',
+        type: 'skills_gap',
+        title: 'Strong Campus Drive Skill Alignment',
+        explanation:
+          'Your resume features key technical skills actively sought by current campus placement opportunities.',
+        recommendation:
+          'Keep project descriptions updated with specific versions and tools to substantiate your proficiency.',
+        isPositive: true,
+        severity: 'success',
+      });
+    }
+  }
+
+  return suggestions;
+}
+
+/**
  * Parses a resume file provided as a Buffer or by referring to a safe, stored filename.
  * Does NOT expose server filesystem paths to the caller.
  *
@@ -205,9 +617,16 @@ function extractContactInfo(text) {
  * @param {string} [options.filename] - Original file name (to infer .pdf or .docx)
  * @param {string} [options.mimeType] - MIME type
  * @param {string} [options.storedFilename] - Name of a file stored in server/uploads/resumes/
+ * @param {string[]} [options.activeDriveSkills] - Skills frequently required by active campus drives
  * @returns {Promise<Object>} Structured extraction result
  */
-async function parseResume({ buffer, filename, mimeType, storedFilename }) {
+async function parseResume({
+  buffer,
+  filename,
+  mimeType,
+  storedFilename,
+  activeDriveSkills = [],
+} = {}) {
   let fileBuffer = buffer;
   let fileExt = '';
 
@@ -311,20 +730,31 @@ async function parseResume({ buffer, filename, mimeType, storedFilename }) {
 
   const extractedSkills = extractSkillsFromText(extractedText);
   const contactInfo = extractContactInfo(extractedText);
+  const wordCount = extractedText ? extractedText.split(/\s+/).filter(Boolean).length : 0;
+
+  const suggestions = generateResumeSuggestions({
+    text: extractedText,
+    extractedSkills,
+    contactInfo,
+    wordCount,
+    activeDriveSkills,
+  });
 
   return {
     success: true,
     fileType: fileExt.replace('.', '').toUpperCase(),
     characterCount: extractedText.length,
-    wordCount: extractedText ? extractedText.split(/\s+/).filter(Boolean).length : 0,
+    wordCount,
     text: extractedText,
     extractedSkills,
     contactInfo,
+    suggestions,
   };
 }
 
 module.exports = {
   parseResume,
+  generateResumeSuggestions,
   extractSkillsFromText,
   extractContactInfo,
   extractTextFromPdf,

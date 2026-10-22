@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const PlacementDrive = require('../models/PlacementDrive');
 const { parseResume } = require('../services/resumeParser');
 
 /**
@@ -69,9 +70,36 @@ const parseMyResume = async (req, res, next) => {
       });
     }
 
+    // Safely query active placement drives to provide real-time campus skill demand context
+    let activeDriveSkills = [];
+    try {
+      const activeDrives = await PlacementDrive.find({
+        status: { $in: ['Upcoming', 'Ongoing'] },
+      })
+        .select('requiredSkills')
+        .lean();
+
+      const skillFreq = {};
+      for (const drive of activeDrives) {
+        if (Array.isArray(drive?.requiredSkills)) {
+          for (const s of drive.requiredSkills) {
+            const trimmed = typeof s === 'string' ? s.trim() : '';
+            if (trimmed) {
+              skillFreq[trimmed] = (skillFreq[trimmed] || 0) + 1;
+            }
+          }
+        }
+      }
+      activeDriveSkills = Object.keys(skillFreq).sort((a, b) => skillFreq[b] - skillFreq[a]);
+    } catch {
+      // Graceful fallback: drive query failures never break resume parsing
+      activeDriveSkills = [];
+    }
+
     // Parse the authenticated student's securely stored resume file
     const parseResult = await parseResume({
       storedFilename: student.resumeFile.filename,
+      activeDriveSkills,
     });
 
     if (!parseResult.success) {
@@ -101,6 +129,7 @@ const parseMyResume = async (req, res, next) => {
         newSkillsFound,
         currentProfileSkills: currentSkills,
         contactInfo: parseResult.contactInfo,
+        suggestions: parseResult.suggestions || [],
       },
     });
   } catch (error) {
