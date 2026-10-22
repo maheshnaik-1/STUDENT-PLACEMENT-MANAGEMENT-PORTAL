@@ -56,7 +56,13 @@ import {
   GitCompare,
   Scale,
   X,
+  TrendingUp,
 } from 'lucide-react';
+
+import {
+  calculateCompleteness,
+  getCompletenessTier,
+} from '../../utils/profileCompleteness';
 
 export {
   evaluateEligibility,
@@ -69,6 +75,8 @@ export {
   TERMINAL_STATUSES,
   isTerminalStatus,
   partitionByTerminalStatus,
+  calculateCompleteness,
+  getCompletenessTier,
 };
 
 const STATUS_FILTERS = [
@@ -654,6 +662,10 @@ const DriveApplicants = () => {
   const evalMatch =
     selectedAppForEval?.skillMatch ||
     (selectedAppForEval ? matchScoresMap[selectedAppForEval._id] : null);
+  const evalCompleteness = evalStudent ? calculateCompleteness(evalStudent) : null;
+  const evalCompletenessTier = evalCompleteness
+    ? getCompletenessTier(evalCompleteness.percentage)
+    : null;
 
   return (
     <div style={{ paddingBottom: '3rem' }}>
@@ -1695,6 +1707,84 @@ const DriveApplicants = () => {
                       </>
                     )}
                   </div>
+                  {evalCompleteness && (
+                    <div
+                      style={{
+                        marginTop: '0.6rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '0.25rem 0.65rem',
+                          fontSize: '0.785rem',
+                          fontWeight: 600,
+                          color: '#1e293b',
+                        }}
+                      >
+                        <TrendingUp size={14} color="#2563eb" />
+                        <span>Profile Completeness:</span>
+                        <strong
+                          style={{
+                            color:
+                              evalCompleteness.percentage >= 80
+                                ? '#15803d'
+                                : evalCompleteness.percentage >= 50
+                                ? '#1d4ed8'
+                                : '#b45309',
+                            fontSize: '0.85rem',
+                          }}
+                        >
+                          {evalCompleteness.percentage}%
+                        </strong>
+                      </div>
+
+                      {evalCompletenessTier && (
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '999px',
+                            background:
+                              evalCompleteness.percentage >= 80
+                                ? '#dcfce7'
+                                : evalCompleteness.percentage >= 50
+                                ? '#eff6ff'
+                                : '#fef3c7',
+                            color:
+                              evalCompleteness.percentage >= 80
+                                ? '#15803d'
+                                : evalCompleteness.percentage >= 50
+                                ? '#1d4ed8'
+                                : '#92400e',
+                            border: `1px solid ${
+                              evalCompleteness.percentage >= 80
+                                ? '#bbf7d0'
+                                : evalCompleteness.percentage >= 50
+                                ? '#bfdbfe'
+                                : '#fde68a'
+                            }`,
+                          }}
+                        >
+                          {evalCompletenessTier.label}
+                        </span>
+                      )}
+
+                      <span style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                        (Informational • 7 dimensions evaluated)
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

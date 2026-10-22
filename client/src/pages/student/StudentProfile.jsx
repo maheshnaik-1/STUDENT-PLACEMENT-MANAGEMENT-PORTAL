@@ -33,130 +33,14 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
+import {
+  calculateCompleteness,
+  getCompletenessTier,
+} from '../../utils/profileCompleteness';
+
+export { calculateCompleteness, getCompletenessTier };
+
 const BRANCHES = ['CSE', 'IT', 'ECE', 'EEE', 'MECH', 'CIVIL', 'AI&DS'];
-
-/**
- * Real deterministic completeness calculation based on MongoDB student fields
- */
-export const calculateCompleteness = (data, resumeFile, projects, certifications) => {
-  let score = 0;
-  const completed = [];
-  const missing = [];
-
-  // 1. Basic Info & Contact (15%)
-  const hasBasic = Boolean(
-    data.name &&
-      data.email &&
-      data.rollNo &&
-      data.branch &&
-      data.phone &&
-      data.phone.trim().length >= 7
-  );
-  if (hasBasic) {
-    score += 15;
-    completed.push('Basic Information & Phone');
-  } else {
-    if (!data.phone || data.phone.trim().length < 7) {
-      missing.push('Add contact phone number');
-    } else {
-      missing.push('Complete basic details (name, roll no, branch)');
-    }
-  }
-
-  // 2. Core Academic Profile (15%)
-  const cgpaNum = parseFloat(data.cgpa);
-  const hasCore = Boolean(
-    !isNaN(cgpaNum) &&
-      cgpaNum > 0 &&
-      data.passingYear &&
-      data.activeBacklogs !== '' &&
-      data.activeBacklogs !== undefined
-  );
-  if (hasCore) {
-    score += 15;
-    completed.push('Core Academic Record (CGPA, Backlogs, Batch)');
-  } else {
-    missing.push('Enter current CGPA, backlog count, and graduation batch');
-  }
-
-  // 3. Extended Academic History (15%)
-  const tenth = parseFloat(data.tenthPercentage);
-  const twelfth = parseFloat(data.twelfthPercentage);
-  const diploma = parseFloat(data.diplomaPercentage);
-  const sem = parseInt(data.currentSemester, 10);
-
-  const has10th = !isNaN(tenth) && tenth > 0 && tenth <= 100;
-  const has12thOrDip = (!isNaN(twelfth) && twelfth > 0 && twelfth <= 100) || (!isNaN(diploma) && diploma > 0 && diploma <= 100);
-  const hasSem = !isNaN(sem) && sem >= 1 && sem <= 12;
-
-  if (has10th && has12thOrDip && hasSem) {
-    score += 15;
-    completed.push('Schooling & Semester Record (10th, 12th/Diploma, Semester)');
-  } else {
-    const parts = [];
-    if (!has10th) parts.push('10th %');
-    if (!has12thOrDip) parts.push('12th/Diploma %');
-    if (!hasSem) parts.push('Current Semester');
-    missing.push(`Add academic history (${parts.join(', ')})`);
-  }
-
-  // 4. Technical Skills (15%)
-  const skillsList = Array.isArray(data.skills)
-    ? data.skills
-    : typeof data.skills === 'string'
-    ? data.skills.split(',').map((s) => s.trim()).filter(Boolean)
-    : [];
-  if (skillsList.length > 0) {
-    score += 15;
-    completed.push(`Technical Skills (${skillsList.length} skills listed)`);
-  } else {
-    missing.push('Add at least one technical skill (e.g., React, Java, Python)');
-  }
-
-  // 5. Resume (15%)
-  const hasUploaded = Boolean(resumeFile && resumeFile.filename);
-  const hasExternal = Boolean(data.resumeUrl && data.resumeUrl.trim().length > 0);
-  if (hasUploaded || hasExternal) {
-    score += 15;
-    completed.push(hasUploaded ? 'Uploaded Resume Document' : 'External Resume Link');
-  } else {
-    missing.push('Upload a PDF/DOC resume or provide an external resume link');
-  }
-
-  // 6. Projects Portfolio (15%)
-  const validProjects = Array.isArray(projects)
-    ? projects.filter((p) => p.title && p.title.trim())
-    : [];
-  if (validProjects.length > 0) {
-    score += 15;
-    completed.push(`Projects Portfolio (${validProjects.length} project${validProjects.length > 1 ? 's' : ''})`);
-  } else {
-    missing.push('Add at least one technical or coursework project');
-  }
-
-  // 7. Professional Links & Certifications (10%)
-  const hasLinks = Boolean(
-    (data.github && data.github.trim()) ||
-      (data.linkedin && data.linkedin.trim()) ||
-      (data.portfolio && data.portfolio.trim())
-  );
-  const validCerts = Array.isArray(certifications)
-    ? certifications.filter((c) => c.name && c.name.trim())
-    : [];
-
-  if (hasLinks || validCerts.length > 0) {
-    score += 10;
-    completed.push('Professional Links or Certifications');
-  } else {
-    missing.push('Add LinkedIn / GitHub link or professional certifications');
-  }
-
-  return {
-    percentage: Math.min(score, 100),
-    completed,
-    missing,
-  };
-};
 
 const StudentProfile = () => {
   const { user, updateProfile, updateResumeState } = useAuth();
