@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
@@ -6,9 +6,25 @@ import StatusBadge from '../../components/common/StatusBadge';
 import StatusUpdateModal from '../../components/officer/StatusUpdateModal';
 import BulkStatusUpdateModal from '../../components/officer/BulkStatusUpdateModal';
 import Modal from '../../components/common/Modal';
+import CandidateComparisonModal from '../../components/officer/CandidateComparisonModal';
+import {
+  evaluateEligibility,
+  sortApplicants,
+  SORT_OPTIONS,
+  TERMINAL_STATUSES,
+  isTerminalStatus,
+  partitionByTerminalStatus,
+} from '../../utils/applicantSorting';
+import {
+  toggleCandidateComparison,
+  removeCandidateComparison,
+  buildComparisonMatrix,
+  MAX_COMPARE_LIMIT,
+} from '../../utils/applicantComparison';
 import {
   Users,
   ArrowLeft,
+  ArrowUpDown,
   Search,
   Filter,
   Download,
@@ -37,7 +53,23 @@ import {
   User,
   RotateCcw,
   CheckSquare,
+  GitCompare,
+  Scale,
+  X,
 } from 'lucide-react';
+
+export {
+  evaluateEligibility,
+  sortApplicants,
+  SORT_OPTIONS,
+  toggleCandidateComparison,
+  removeCandidateComparison,
+  buildComparisonMatrix,
+  MAX_COMPARE_LIMIT,
+  TERMINAL_STATUSES,
+  isTerminalStatus,
+  partitionByTerminalStatus,
+};
 
 const STATUS_FILTERS = [
   'ALL',
@@ -98,93 +130,42 @@ const hasUploadedResume = (student) => {
   return Boolean(student?.resumeFile && student.resumeFile.filename);
 };
 
-/**
- * Reusable eligibility evaluation for Drive vs Candidate
- */
-const evaluateEligibility = (student, drive) => {
-  if (!student || !drive) return { isEligible: true, details: [] };
-
-  const elig = drive.eligibility || {};
-  const details = [];
-  let isEligible = true;
-
-  // 1. CGPA
-  const minCGPA = Number(elig.minCGPA) || 0;
-  const studentCGPA = Number(student.cgpa) || 0;
-  const cgpaOk = studentCGPA >= minCGPA;
-  if (!cgpaOk) isEligible = false;
-  details.push({
-    criteria: 'Minimum CGPA',
-    required: `≥ ${minCGPA.toFixed(2)}`,
-    actual: studentCGPA.toFixed(2),
-    passed: cgpaOk,
-  });
-
-  // 2. Backlogs
-  const maxBacklogs = elig.maxBacklogs !== undefined ? Number(elig.maxBacklogs) : 0;
-  const studentBacklogs = Number(student.activeBacklogs) || 0;
-  const backlogsOk = studentBacklogs <= maxBacklogs;
-  if (!backlogsOk) isEligible = false;
-  details.push({
-    criteria: 'Max Backlogs',
-    required: `≤ ${maxBacklogs}`,
-    actual: `${studentBacklogs}`,
-    passed: backlogsOk,
-  });
-
-  // 3. Branches
-  const eligibleBranches =
-    Array.isArray(elig.eligibleBranches) && elig.eligibleBranches.length > 0
-      ? elig.eligibleBranches
-      : [];
-  const branchOk = eligibleBranches.length === 0 || eligibleBranches.includes(student.branch);
-  if (!branchOk) isEligible = false;
-  details.push({
-    criteria: 'Eligible Branch',
-    required: eligibleBranches.length > 0 ? eligibleBranches.join(', ') : 'All Branches',
-    actual: student.branch || 'N/A',
-    passed: branchOk,
-  });
-
-  // 4. Passing Year
-  const reqPassingYear = Number(elig.passingYear);
-  const studentPassingYear = Number(student.passingYear);
-  const yearOk = !reqPassingYear || studentPassingYear === reqPassingYear;
-  if (!yearOk) isEligible = false;
-  if (reqPassingYear) {
-    details.push({
-      criteria: 'Passing Batch',
-      required: `${reqPassingYear}`,
-      actual: `${studentPassingYear || 'N/A'}`,
-      passed: yearOk,
-    });
-  }
-
-  return { isEligible, details };
-};
-
 const DriveApplicants = () => {
   const { driveId } = useParams();
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showWarning } = useNotification();
 
   const [drive, setDrive] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Advanced Filters State
+  // Advanced Filters & Sort State
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [branchFilter, setBranchFilter] = useState('ALL');
   const [cgpaFilter, setCgpaFilter] = useState('ALL');
   const [eligibilityFilter, setEligibilityFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('applied_desc');
 
   // Selection & Modal States
   const [selectedAppIds, setSelectedAppIds] = useState(new Set());
+  const [comparedAppIds, setComparedAppIds] = useState(new Set());
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [selectedAppForStatus, setSelectedAppForStatus] = useState(null);
   const [selectedAppForEval, setSelectedAppForEval] = useState(null);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
+  // AI Skill Match Scores State
+  const [matchScoresMap, setMatchScoresMap] = useState({});
+  const [matchScoresLoading, setMatchScoresLoading] = useState(true);
+  const [matchScoresError, setMatchScoresError] = useState(null);
+
+  // In-flight and Abort Controller Refs for Strict Mode & Fast Route Switch Defense
+  const abortScoresRef = useRef(null);
+  const fetchingScoresDriveIdRef = useRef(null);
+  const abortApplicantsRef = useRef(null);
+  const fetchingApplicantsDriveIdRef = useRef(null);
 
   // Resume Preview State for Officer
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -194,10 +175,29 @@ const DriveApplicants = () => {
   const [previewStudent, setPreviewStudent] = useState(null);
   const [downloadingStudentId, setDownloadingStudentId] = useState(null);
 
-  const fetchApplicants = async () => {
+  const fetchApplicants = async (targetDriveId = driveId, { force = false } = {}) => {
+    if (!targetDriveId) return;
+
+    // Prevent duplicate in-flight requests for the exact same drive unless force refresh is requested
+    if (!force && fetchingApplicantsDriveIdRef.current === targetDriveId) {
+      return;
+    }
+
+    if (abortApplicantsRef.current) {
+      abortApplicantsRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortApplicantsRef.current = controller;
+    fetchingApplicantsDriveIdRef.current = targetDriveId;
+
     try {
       setLoading(true);
-      const res = await api.applications.getDriveApplicants(driveId);
+      const res = await api.applications.getDriveApplicants(targetDriveId, {}, {
+        signal: controller.signal,
+      });
+
+      // Ignore if aborted or drive changed
+      if (controller.signal.aborted || targetDriveId !== driveId) return;
 
       if (res.success) {
         setDrive(res.drive);
@@ -212,68 +212,174 @@ const DriveApplicants = () => {
         }
       }
     } catch (err) {
-      showError(err.message || 'Failed to fetch applicants');
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        return;
+      }
+      if (targetDriveId === driveId) {
+        showError(err.message || 'Failed to fetch applicants');
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && targetDriveId === driveId) {
+        setLoading(false);
+      }
+      if (fetchingApplicantsDriveIdRef.current === targetDriveId) {
+        fetchingApplicantsDriveIdRef.current = null;
+      }
+    }
+  };
+
+  const fetchMatchScores = async (targetDriveId = driveId, { force = false } = {}) => {
+    if (!targetDriveId) return;
+
+    // Prevent duplicate in-flight requests for the exact same drive unless force refresh is requested
+    if (!force && fetchingScoresDriveIdRef.current === targetDriveId) {
+      return;
+    }
+
+    if (abortScoresRef.current) {
+      abortScoresRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortScoresRef.current = controller;
+    fetchingScoresDriveIdRef.current = targetDriveId;
+
+    try {
+      setMatchScoresLoading(true);
+      setMatchScoresError(null);
+      const res = await api.applications.getMatchScores(targetDriveId, {
+        signal: controller.signal,
+      });
+
+      // Ignore if aborted or drive changed
+      if (controller.signal.aborted || targetDriveId !== driveId) return;
+
+      if (res.success) {
+        const scoresList = res.data?.applicants || [];
+        const scoreMap = {};
+        scoresList.forEach((item) => {
+          if (item.applicationId) {
+            scoreMap[item.applicationId] = item.skillMatch;
+          }
+        });
+        setMatchScoresMap(scoreMap);
+      } else {
+        setMatchScoresError(res.message || 'Failed to calculate skill match scores');
+        setMatchScoresMap({});
+      }
+    } catch (err) {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        return;
+      }
+      if (targetDriveId === driveId) {
+        setMatchScoresError(err.message || 'Failed to load skill match scores');
+        setMatchScoresMap({});
+      }
+    } finally {
+      if (!controller.signal.aborted && targetDriveId === driveId) {
+        setMatchScoresLoading(false);
+      }
+      if (fetchingScoresDriveIdRef.current === targetDriveId) {
+        fetchingScoresDriveIdRef.current = null;
+      }
     }
   };
 
   useEffect(() => {
-    fetchApplicants();
+    // When switching drives, clear previous scores and selections so they do not linger
+    setMatchScoresMap({});
     setSelectedAppIds(new Set());
+    setComparedAppIds(new Set());
+    setCompareModalOpen(false);
+
+    fetchApplicants(driveId, { force: true });
+    fetchMatchScores(driveId, { force: true });
+
+    return () => {
+      if (abortApplicantsRef.current) {
+        abortApplicantsRef.current.abort();
+        fetchingApplicantsDriveIdRef.current = null;
+      }
+      if (abortScoresRef.current) {
+        abortScoresRef.current.abort();
+        fetchingScoresDriveIdRef.current = null;
+      }
+    };
   }, [driveId]);
 
-  // Compute Filtered Applicants
-  const filteredApplicants = applicants.filter((app) => {
-    const s = app.student || {};
-
-    // 1. Status Filter
-    if (statusFilter !== 'ALL' && app.status !== statusFilter) return false;
-
-    // 2. Branch Filter
-    if (branchFilter !== 'ALL' && s.branch !== branchFilter) return false;
-
-    // 3. Minimum CGPA Filter
-    if (cgpaFilter !== 'ALL') {
-      const minCgpa = parseFloat(cgpaFilter);
-      const studentCgpa = parseFloat(s.cgpa) || 0;
-      if (!isNaN(minCgpa) && studentCgpa < minCgpa) return false;
-    }
-
-    // 4. Eligibility Filter (uses canonical evaluateEligibility source of truth)
-    if (eligibilityFilter !== 'ALL') {
-      const evalResult = evaluateEligibility(s, drive);
-      if (eligibilityFilter === 'ELIGIBLE' && !evalResult.isEligible) return false;
-      if (eligibilityFilter === 'INELIGIBLE' && evalResult.isEligible) return false;
-    }
-
-    // 5. Multi-field Search (Name, Roll No, Email, Branch, Technical Skills)
-    if (search && search.trim()) {
-      const q = search.toLowerCase().trim();
-      const nameMatch = (s.name || '').toLowerCase().includes(q);
-      const rollMatch = (s.rollNo || '').toLowerCase().includes(q);
-      const emailMatch = (s.email || '').toLowerCase().includes(q);
-      const branchMatch = (s.branch || '').toLowerCase().includes(q);
-      const skillsMatch = Array.isArray(s.skills)
-        ? s.skills.some((sk) => sk.toLowerCase().includes(q))
-        : typeof s.skills === 'string'
-        ? s.skills.toLowerCase().includes(q)
-        : false;
-
-      if (!nameMatch && !rollMatch && !emailMatch && !branchMatch && !skillsMatch) {
-        return false;
+  // Merge AI Skill Match Scores onto Applicants Dataset
+  const enrichedApplicants = useMemo(() => {
+    return applicants.map((app) => {
+      const match = matchScoresMap[app._id];
+      if (match) {
+        return {
+          ...app,
+          matchScore: match.score,
+          skillMatch: match,
+        };
       }
-    }
+      return app;
+    });
+  }, [applicants, matchScoresMap]);
 
-    return true;
-  });
+  // Compute Filtered Applicants from Enriched Dataset
+  const filteredApplicants = useMemo(() => {
+    return enrichedApplicants.filter((app) => {
+      const s = app.student || {};
+
+      // 1. Status Filter
+      if (statusFilter !== 'ALL' && app.status !== statusFilter) return false;
+
+      // 2. Branch Filter
+      if (branchFilter !== 'ALL' && s.branch !== branchFilter) return false;
+
+      // 3. Minimum CGPA Filter
+      if (cgpaFilter !== 'ALL') {
+        const minCgpa = parseFloat(cgpaFilter);
+        const studentCgpa = parseFloat(s.cgpa) || 0;
+        if (!isNaN(minCgpa) && studentCgpa < minCgpa) return false;
+      }
+
+      // 4. Eligibility Filter (uses canonical evaluateEligibility source of truth)
+      if (eligibilityFilter !== 'ALL') {
+        const evalResult = evaluateEligibility(s, drive);
+        if (eligibilityFilter === 'ELIGIBLE' && !evalResult.isEligible) return false;
+        if (eligibilityFilter === 'INELIGIBLE' && evalResult.isEligible) return false;
+      }
+
+      // 5. Multi-field Search (Name, Roll No, Email, Branch, Technical Skills)
+      if (search && search.trim()) {
+        const q = search.toLowerCase().trim();
+        const nameMatch = (s.name || '').toLowerCase().includes(q);
+        const rollMatch = (s.rollNo || '').toLowerCase().includes(q);
+        const emailMatch = (s.email || '').toLowerCase().includes(q);
+        const branchMatch = (s.branch || '').toLowerCase().includes(q);
+        const skillsMatch = Array.isArray(s.skills)
+          ? s.skills.some((sk) => sk.toLowerCase().includes(q))
+          : typeof s.skills === 'string'
+          ? s.skills.toLowerCase().includes(q)
+          : false;
+
+        if (!nameMatch && !rollMatch && !emailMatch && !branchMatch && !skillsMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [enrichedApplicants, statusFilter, branchFilter, cgpaFilter, eligibilityFilter, search, drive]);
+
+  // Compute Sorted Applicants from Filtered Dataset
+  const sortedApplicants = useMemo(() => {
+    return sortApplicants(filteredApplicants, sortBy);
+  }, [filteredApplicants, sortBy]);
 
   const activeFilterCount =
     (statusFilter !== 'ALL' ? 1 : 0) +
     (branchFilter !== 'ALL' ? 1 : 0) +
     (cgpaFilter !== 'ALL' ? 1 : 0) +
     (eligibilityFilter !== 'ALL' ? 1 : 0) +
-    (search.trim() ? 1 : 0);
+    (search.trim() ? 1 : 0) +
+    (sortBy !== 'applied_desc' ? 1 : 0);
 
   const handleResetFilters = () => {
     setStatusFilter('ALL');
@@ -281,22 +387,23 @@ const DriveApplicants = () => {
     setCgpaFilter('ALL');
     setEligibilityFilter('ALL');
     setSearch('');
+    setSortBy('applied_desc');
   };
 
   // Selection Management
   const isAllSelected =
-    filteredApplicants.length > 0 &&
-    filteredApplicants.every((a) => selectedAppIds.has(a._id));
+    sortedApplicants.length > 0 &&
+    sortedApplicants.every((a) => selectedAppIds.has(a._id));
 
   const isSomeSelected =
-    filteredApplicants.some((a) => selectedAppIds.has(a._id)) && !isAllSelected;
+    sortedApplicants.some((a) => selectedAppIds.has(a._id)) && !isAllSelected;
 
   const handleToggleSelectAll = () => {
     const next = new Set(selectedAppIds);
     if (isAllSelected) {
-      filteredApplicants.forEach((a) => next.delete(a._id));
+      sortedApplicants.forEach((a) => next.delete(a._id));
     } else {
-      filteredApplicants.forEach((a) => next.add(a._id));
+      sortedApplicants.forEach((a) => next.add(a._id));
     }
     setSelectedAppIds(next);
   };
@@ -311,6 +418,43 @@ const DriveApplicants = () => {
     setSelectedAppIds(next);
   };
 
+  // Candidate Comparison Handlers (V4.0 Phase 2 Step 3)
+  const handleToggleCompare = (appId) => {
+    const result = toggleCandidateComparison(comparedAppIds, appId, MAX_COMPARE_LIMIT);
+    if (result.limitReached) {
+      showError(result.message || 'Comparison limit reached (max 4 candidates).');
+      return;
+    }
+    setComparedAppIds(result.nextSelected);
+  };
+
+  const handleRemoveCompare = (appId) => {
+    const next = removeCandidateComparison(comparedAppIds, appId);
+    setComparedAppIds(next);
+    if (next.size === 0) {
+      setCompareModalOpen(false);
+    }
+  };
+
+  const handleClearCompare = () => {
+    setComparedAppIds(new Set());
+    setCompareModalOpen(false);
+  };
+
+  // Side-by-Side Comparison Matrix Computation
+  const comparisonMatrix = useMemo(() => {
+    return buildComparisonMatrix(comparedAppIds, applicants, drive, matchScoresMap);
+  }, [comparedAppIds, applicants, drive, matchScoresMap]);
+
+  // Selected Applications Partitioning for Terminal-State Protection (V4.0 Phase 2 Step 4)
+  const selectedApplications = useMemo(() => {
+    return applicants.filter((a) => selectedAppIds.has(a._id));
+  }, [applicants, selectedAppIds]);
+
+  const { updatable: updatableSelectedApps, terminal: terminalSelectedApps } = useMemo(() => {
+    return partitionByTerminalStatus(selectedApplications);
+  }, [selectedApplications]);
+
   const handleStatusUpdate = async ({ status, remarks }) => {
     if (!selectedAppForStatus) return;
     try {
@@ -323,7 +467,7 @@ const DriveApplicants = () => {
       if (res.success) {
         showSuccess(res.message || 'Status updated successfully!');
         setSelectedAppForStatus(null);
-        fetchApplicants();
+        fetchApplicants(driveId, { force: true });
       }
     } catch (err) {
       showError(err.message || 'Failed to update status');
@@ -344,10 +488,25 @@ const DriveApplicants = () => {
       });
 
       if (res.success) {
-        showSuccess(res.message || 'Bulk status update completed successfully!');
+        const terminalSkipped = (res.data?.skipped || []).filter(
+          (s) => s.isTerminalProtected || ['Selected', 'Rejected'].includes(s.currentStatus)
+        );
+
+        if (res.updatedCount === 0 && terminalSkipped.length > 0) {
+          showWarning(
+            `No applications were updated. All ${terminalSkipped.length} selected candidate(s) are in terminal status ('Selected' or 'Rejected') and were protected from bulk overwrite.`
+          );
+        } else if (terminalSkipped.length > 0) {
+          showSuccess(
+            `Bulk update complete: ${res.updatedCount} candidate(s) updated to '${status}'. ${terminalSkipped.length} candidate(s) in terminal status ('Selected' or 'Rejected') were protected and skipped.`
+          );
+        } else {
+          showSuccess(res.message || 'Bulk status update completed successfully!');
+        }
+
         setSelectedAppIds(new Set());
         setBulkModalOpen(false);
-        fetchApplicants();
+        fetchApplicants(driveId, { force: true });
       }
     } catch (err) {
       showError(err.message || 'Failed to execute bulk status update');
@@ -356,9 +515,9 @@ const DriveApplicants = () => {
     }
   };
 
-  // Filtered CSV Export Handler
+  // Filtered & Sorted CSV Export Handler
   const handleExportCSV = () => {
-    if (filteredApplicants.length === 0) {
+    if (sortedApplicants.length === 0) {
       showError('No applicants matching current filters to export.');
       return;
     }
@@ -382,7 +541,7 @@ const DriveApplicants = () => {
 
     const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
 
-    const rows = filteredApplicants.map((app) => {
+    const rows = sortedApplicants.map((app) => {
       const s = app.student || {};
       const evalResult = evaluateEligibility(s, drive);
       return [
@@ -414,7 +573,7 @@ const DriveApplicants = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showSuccess(`Exported ${filteredApplicants.length} filtered applicant(s) to CSV!`);
+    showSuccess(`Exported ${sortedApplicants.length} filtered applicant(s) to CSV!`);
   };
 
   // Open PDF Preview Modal
@@ -492,6 +651,9 @@ const DriveApplicants = () => {
 
   const evalStudent = selectedAppForEval?.student;
   const evalEligibility = evalStudent && drive ? evaluateEligibility(evalStudent, drive) : null;
+  const evalMatch =
+    selectedAppForEval?.skillMatch ||
+    (selectedAppForEval ? matchScoresMap[selectedAppForEval._id] : null);
 
   return (
     <div style={{ paddingBottom: '3rem' }}>
@@ -578,7 +740,30 @@ const DriveApplicants = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setCompareModalOpen(true)}
+              className="btn btn-secondary"
+              disabled={comparedAppIds.size === 0}
+              title={
+                comparedAppIds.size === 0
+                  ? 'Select candidates to compare side-by-side (up to 4)'
+                  : `Compare ${comparedAppIds.size} selected candidate${comparedAppIds.size > 1 ? 's' : ''}`
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: comparedAppIds.size > 0 ? '#eff6ff' : undefined,
+                color: comparedAppIds.size > 0 ? '#1d4ed8' : undefined,
+                borderColor: comparedAppIds.size > 0 ? '#bfdbfe' : undefined,
+              }}
+            >
+              <GitCompare size={16} />
+              <span>Compare Candidates ({comparedAppIds.size}/4)</span>
+            </button>
+
             <button onClick={handleExportCSV} className="btn btn-secondary">
               <Download size={16} />
               <span>Export CSV</span>
@@ -699,6 +884,25 @@ const DriveApplicants = () => {
               ))}
             </select>
           </div>
+
+          {/* Sort By Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <ArrowUpDown size={15} color="#64748b" style={{ flexShrink: 0 }} />
+            <select
+              id="applicant-sort-by"
+              className="form-control"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{ fontSize: '0.825rem' }}
+              aria-label="Sort applicant roster"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  Sort: {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Row 3: Metrics Summary Bar */}
@@ -716,7 +920,7 @@ const DriveApplicants = () => {
           }}
         >
           <div>
-            Showing <strong style={{ color: '#0f172a' }}>{filteredApplicants.length}</strong> of{' '}
+            Showing <strong style={{ color: '#0f172a' }}>{sortedApplicants.length}</strong> of{' '}
             <strong style={{ color: '#0f172a' }}>{applicants.length}</strong> total applicants
             {activeFilterCount > 0 && <span style={{ color: '#2563eb' }}> ({activeFilterCount} active filters)</span>}
           </div>
@@ -728,6 +932,116 @@ const DriveApplicants = () => {
           </div>
         </div>
       </div>
+
+      {/* Floating Candidate Comparison Dock */}
+      {comparedAppIds.size > 0 && (
+        <div
+          style={{
+            position: 'sticky',
+            top: selectedAppIds.size > 0 ? '145px' : '75px',
+            zIndex: 35,
+            background: '#0f172a',
+            color: '#ffffff',
+            borderRadius: '10px',
+            padding: '0.75rem 1.25rem',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.35)',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            border: '1px solid #334155',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <GitCompare size={17} color="#60a5fa" />
+              <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Compare Candidates:</span>
+              <span
+                style={{
+                  background: comparedAppIds.size >= MAX_COMPARE_LIMIT ? '#b45309' : '#2563eb',
+                  padding: '0.15rem 0.55rem',
+                  borderRadius: '999px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                }}
+              >
+                {comparedAppIds.size} / {MAX_COMPARE_LIMIT}
+              </span>
+              {comparedAppIds.size >= MAX_COMPARE_LIMIT && (
+                <span style={{ fontSize: '0.75rem', color: '#fef08a', fontWeight: 600 }}>
+                  (Capacity Limit Reached)
+                </span>
+              )}
+            </div>
+
+            {/* Selected Candidate Chips with Remove Buttons */}
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {Array.from(comparedAppIds).map((id) => {
+                const app = applicants.find((a) => a._id === id);
+                const name = app?.student?.name || 'Candidate';
+                return (
+                  <span
+                    key={id}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      background: '#1e293b',
+                      border: '1px solid #475569',
+                      borderRadius: '6px',
+                      padding: '0.2rem 0.55rem',
+                      fontSize: '0.75rem',
+                      color: '#e2e8f0',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCompare(id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                      title={`Remove ${name} from comparison`}
+                      aria-label={`Remove ${name} from comparison`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setCompareModalOpen(true)}
+              className="btn btn-primary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#2563eb' }}
+            >
+              <Scale size={14} />
+              <span>Compare Side-by-Side ({comparedAppIds.size})</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleClearCompare}
+              className="btn btn-secondary btn-sm"
+              style={{ background: '#1e293b', color: '#cbd5e1', borderColor: '#475569' }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Bulk Actions Bar */}
       {selectedAppIds.size > 0 && (
@@ -750,7 +1064,7 @@ const DriveApplicants = () => {
             animation: 'fadeIn 0.2s ease',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <span
               style={{
                 background: '#2563eb',
@@ -762,8 +1076,24 @@ const DriveApplicants = () => {
             >
               {selectedAppIds.size} Selected
             </span>
+            {terminalSelectedApps.length > 0 && (
+              <span
+                style={{
+                  background: '#d97706',
+                  color: '#ffffff',
+                  padding: '0.15rem 0.55rem',
+                  borderRadius: '999px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                }}
+              >
+                {terminalSelectedApps.length} Terminal Protected
+              </span>
+            )}
             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Batch applicant actions ready
+              {terminalSelectedApps.length > 0
+                ? `${updatableSelectedApps.length} active applicant${updatableSelectedApps.length > 1 ? 's' : ''} ready for update`
+                : 'Batch applicant actions ready'}
             </span>
           </div>
 
@@ -802,7 +1132,7 @@ const DriveApplicants = () => {
             No students have applied to this placement drive yet.
           </p>
         </div>
-      ) : filteredApplicants.length === 0 ? (
+      ) : sortedApplicants.length === 0 ? (
         <div className="card empty-state">
           <Users size={48} color="#94a3b8" style={{ margin: '0 auto 1rem' }} />
           <h3 className="empty-title">No Matching Applicants Found</h3>
@@ -837,26 +1167,76 @@ const DriveApplicants = () => {
                     />
                   </th>
                   <th>Roll No</th>
-                  <th>Student Candidate</th>
-                  <th>Branch & CGPA</th>
-                  <th>Resume / Skills</th>
-                  <th>Applied On</th>
+                  <th
+                    onClick={() => setSortBy(sortBy === 'name_asc' ? 'name_desc' : 'name_asc')}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Click to sort by Candidate Name (A-Z / Z-A)"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>Student Candidate</span>
+                      <ArrowUpDown
+                        size={12}
+                        color={sortBy.startsWith('name') ? '#2563eb' : '#94a3b8'}
+                      />
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => setSortBy(sortBy === 'cgpa_desc' ? 'cgpa_asc' : 'cgpa_desc')}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Click to sort by CGPA (Highest / Lowest)"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>Branch & CGPA</span>
+                      <ArrowUpDown
+                        size={12}
+                        color={sortBy.startsWith('cgpa') ? '#2563eb' : '#94a3b8'}
+                      />
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => setSortBy(sortBy === 'match_desc' ? 'applied_desc' : 'match_desc')}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Click to sort by Skill Match Score (Highest First)"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>Resume / Skills</span>
+                      <ArrowUpDown
+                        size={12}
+                        color={sortBy === 'match_desc' ? '#2563eb' : '#94a3b8'}
+                      />
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => setSortBy(sortBy === 'applied_desc' ? 'applied_asc' : 'applied_desc')}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Click to sort by Applied Date (Newest / Oldest)"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>Applied On</span>
+                      <ArrowUpDown
+                        size={12}
+                        color={sortBy.startsWith('applied') ? '#2563eb' : '#94a3b8'}
+                      />
+                    </div>
+                  </th>
                   <th>Current Status</th>
                   <th>Feedback / Remarks</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredApplicants.map((app) => {
+                {sortedApplicants.map((app) => {
                   const s = app.student || {};
                   const isSelected = app.status === 'Selected';
                   const isChecked = selectedAppIds.has(app._id);
+                  const isCompared = comparedAppIds.has(app._id);
 
                   return (
                     <tr
                       key={app._id}
                       style={{
                         background: isChecked ? '#eff6ff' : isSelected ? '#f0fdf4' : 'transparent',
+                        borderLeft: isCompared ? '4px solid #2563eb' : undefined,
                       }}
                     >
                       <td style={{ textAlign: 'center' }}>
@@ -873,8 +1253,25 @@ const DriveApplicants = () => {
                       </td>
 
                       <td>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>
-                          {s.name || 'Student Name'}
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                            {s.name || 'Student Name'}
+                          </span>
+                          {isCompared && (
+                            <span
+                              style={{
+                                fontSize: '0.675rem',
+                                fontWeight: 700,
+                                background: '#dbeafe',
+                                color: '#1e40af',
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: '4px',
+                                marginLeft: '0.4rem',
+                              }}
+                            >
+                              Comparing
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
                           {s.email}
@@ -892,6 +1289,150 @@ const DriveApplicants = () => {
 
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {/* AI Skill Match Badge */}
+                          {matchScoresLoading ? (
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '6px',
+                                fontSize: '0.725rem',
+                                fontWeight: 600,
+                                background: '#f8fafc',
+                                color: '#64748b',
+                                border: '1px solid #e2e8f0',
+                                width: 'fit-content',
+                              }}
+                            >
+                              <Loader2 size={11} className="spin" color="#64748b" />
+                              <span>Matching skills...</span>
+                            </div>
+                          ) : matchScoresError ? (
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '6px',
+                                fontSize: '0.725rem',
+                                fontWeight: 600,
+                                background: '#fff1f2',
+                                color: '#be123c',
+                                border: '1px solid #fecdd3',
+                                width: 'fit-content',
+                              }}
+                              title={matchScoresError}
+                            >
+                              <AlertCircle size={11} color="#e11d48" />
+                              <span>Score unavailable</span>
+                              <button
+                                type="button"
+                                onClick={() => fetchMatchScores(driveId, { force: true })}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#be123c',
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer',
+                                  fontSize: '0.7rem',
+                                  padding: 0,
+                                  marginLeft: '0.2rem',
+                                }}
+                                title="Retry loading skill match scores"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : app.skillMatch ? (
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                padding: '0.15rem 0.55rem',
+                                borderRadius: '6px',
+                                fontSize: '0.725rem',
+                                fontWeight: 700,
+                                background:
+                                  app.skillMatch.score >= 80
+                                    ? '#f0fdf4'
+                                    : app.skillMatch.score >= 60
+                                    ? '#eff6ff'
+                                    : app.skillMatch.score >= 40
+                                    ? '#fefce8'
+                                    : app.skillMatch.score > 0
+                                    ? '#fff7ed'
+                                    : '#f8fafc',
+                                color:
+                                  app.skillMatch.score >= 80
+                                    ? '#15803d'
+                                    : app.skillMatch.score >= 60
+                                    ? '#1d4ed8'
+                                    : app.skillMatch.score >= 40
+                                    ? '#a16207'
+                                    : app.skillMatch.score > 0
+                                    ? '#c2410c'
+                                    : '#64748b',
+                                border: `1px solid ${
+                                  app.skillMatch.score >= 80
+                                    ? '#bbf7d0'
+                                    : app.skillMatch.score >= 60
+                                    ? '#bfdbfe'
+                                    : app.skillMatch.score >= 40
+                                    ? '#fef08a'
+                                    : app.skillMatch.score > 0
+                                    ? '#fed7aa'
+                                    : '#e2e8f0'
+                                }`,
+                                width: 'fit-content',
+                                cursor: 'help',
+                              }}
+                              title={
+                                app.skillMatch.explanation ||
+                                `Match Score: ${app.skillMatch.score}%\nMatched: ${(app.skillMatch.matchedSkills || []).join(', ') || 'None'}\nMissing: ${(app.skillMatch.missingSkills || []).join(', ') || 'None'}`
+                              }
+                            >
+                              <Sparkles
+                                size={11}
+                                color={
+                                  app.skillMatch.score >= 80
+                                    ? '#16a34a'
+                                    : app.skillMatch.score >= 60
+                                    ? '#2563eb'
+                                    : app.skillMatch.score >= 40
+                                    ? '#d97706'
+                                    : '#94a3b8'
+                                }
+                              />
+                              <span>{app.skillMatch.score}% Match</span>
+                              {app.skillMatch.totalRequired === 0 && (
+                                <span style={{ fontSize: '0.675rem', fontWeight: 500, opacity: 0.85 }}>
+                                  (Baseline)
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '6px',
+                                fontSize: '0.725rem',
+                                color: '#94a3b8',
+                                background: '#f8fafc',
+                                border: '1px dashed #e2e8f0',
+                                width: 'fit-content',
+                              }}
+                            >
+                              <span>Match N/A</span>
+                            </div>
+                          )}
+
                           {/* Uploaded Resume Actions */}
                           {hasUploadedResume(s) && (
                             <div
@@ -1008,6 +1549,29 @@ const DriveApplicants = () => {
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                           <button
+                            type="button"
+                            onClick={() => handleToggleCompare(app._id)}
+                            className={`btn btn-sm ${isCompared ? 'btn-primary' : 'btn-secondary'}`}
+                            title={
+                              isCompared
+                                ? 'Remove candidate from side-by-side comparison'
+                                : comparedAppIds.size >= MAX_COMPARE_LIMIT
+                                ? 'Comparison capacity limit reached (maximum 4 candidates)'
+                                : 'Add candidate to side-by-side comparison'
+                            }
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: isCompared ? '#2563eb' : '#ffffff',
+                              color: isCompared ? '#ffffff' : '#334155',
+                              borderColor: isCompared ? '#2563eb' : '#cbd5e1',
+                            }}
+                          >
+                            <GitCompare size={13} />
+                            <span>{isCompared ? 'Comparing' : 'Compare'}</span>
+                          </button>
+                          <button
                             onClick={() => setSelectedAppForEval(app)}
                             className="btn btn-secondary btn-sm"
                             title="Evaluate Applicant Career Profile"
@@ -1050,9 +1614,28 @@ const DriveApplicants = () => {
         isOpen={bulkModalOpen}
         onClose={() => setBulkModalOpen(false)}
         selectedCount={selectedAppIds.size}
+        selectedApplications={selectedApplications}
         drive={drive}
         onSubmit={handleBulkStatusSubmit}
         isSubmitting={isBulkUpdating}
+      />
+
+      {/* Candidate Comparison Modal (V4.0 Phase 2 Step 3) */}
+      <CandidateComparisonModal
+        isOpen={compareModalOpen}
+        onClose={() => setCompareModalOpen(false)}
+        matrix={comparisonMatrix}
+        onRemoveCandidate={handleRemoveCompare}
+        onClearAll={handleClearCompare}
+        onSelectForEval={(app) => {
+          setSelectedAppForEval(app);
+        }}
+        onSelectForStatus={(app) => {
+          setSelectedAppForStatus(app);
+        }}
+        onPreviewResume={(student) => {
+          handleOpenPreview(student);
+        }}
       />
 
       {/* Comprehensive Officer Applicant Evaluation Modal */}
@@ -1123,6 +1706,32 @@ const DriveApplicants = () => {
                     <span> • Updated {new Date(selectedAppForEval.updatedAt).toLocaleDateString()}</span>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleCompare(selectedAppForEval._id)}
+                  className={`btn btn-sm ${comparedAppIds.has(selectedAppForEval._id) ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontSize: '0.75rem',
+                    marginTop: '0.25rem',
+                  }}
+                  title={
+                    comparedAppIds.has(selectedAppForEval._id)
+                      ? 'Remove candidate from comparison'
+                      : comparedAppIds.size >= MAX_COMPARE_LIMIT
+                      ? 'Comparison limit reached (max 4 candidates)'
+                      : 'Add candidate to comparison'
+                  }
+                >
+                  <GitCompare size={12} />
+                  <span>
+                    {comparedAppIds.has(selectedAppForEval._id)
+                      ? 'In Comparison'
+                      : 'Compare Candidate'}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -1337,7 +1946,7 @@ const DriveApplicants = () => {
               </div>
             </div>
 
-            {/* D. Skills */}
+            {/* D. Skills & AI Skill Match Analysis */}
             <div
               style={{
                 background: '#ffffff',
@@ -1346,23 +1955,203 @@ const DriveApplicants = () => {
                 padding: '1.25rem',
               }}
             >
-              <h4
+              <div
                 style={{
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  color: '#1e293b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  marginBottom: '0.75rem',
                   display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '0.4rem',
+                  marginBottom: '0.75rem',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
                 }}
               >
-                <Sparkles size={16} color="#2563eb" />
-                <span>Technical Skills ({evalStudent.skills?.length || 0})</span>
-              </h4>
+                <h4
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color: '#1e293b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    margin: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <Sparkles size={16} color="#2563eb" />
+                  <span>Technical Skills & AI Match ({evalStudent.skills?.length || 0})</span>
+                </h4>
 
+                {evalMatch && (
+                  <span
+                    style={{
+                      fontSize: '0.775rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '999px',
+                      background:
+                        evalMatch.score >= 80
+                          ? '#dcfce7'
+                          : evalMatch.score >= 60
+                          ? '#eff6ff'
+                          : evalMatch.score >= 40
+                          ? '#fefce8'
+                          : '#f1f5f9',
+                      color:
+                        evalMatch.score >= 80
+                          ? '#15803d'
+                          : evalMatch.score >= 60
+                          ? '#1d4ed8'
+                          : evalMatch.score >= 40
+                          ? '#a16207'
+                          : '#475569',
+                      border: `1px solid ${
+                        evalMatch.score >= 80
+                          ? '#86efac'
+                          : evalMatch.score >= 60
+                          ? '#bfdbfe'
+                          : '#e2e8f0'
+                      }`,
+                    }}
+                  >
+                    AI Match Score: {evalMatch.score}%
+                    {evalMatch.totalRequired === 0 ? ' (Baseline)' : ''}
+                  </span>
+                )}
+              </div>
+
+              {evalMatch && evalMatch.explanation && (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '0.65rem 0.85rem',
+                    fontSize: '0.8rem',
+                    color: '#334155',
+                    marginBottom: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <Sparkles size={14} color="#2563eb" style={{ flexShrink: 0 }} />
+                  <span>{evalMatch.explanation}</span>
+                </div>
+              )}
+
+              {/* Matched vs Missing Breakdown if drive has required skills */}
+              {evalMatch && evalMatch.totalRequired > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '0.75rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '8px',
+                      padding: '0.65rem 0.85rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: '#166534',
+                        marginBottom: '0.4rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <CheckCircle2 size={13} color="#16a34a" />
+                      <span>Matched Requirements ({evalMatch.matchedSkills?.length || 0})</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                      {(evalMatch.matchedSkills || []).length > 0 ? (
+                        evalMatch.matchedSkills.map((sk, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              background: '#ffffff',
+                              color: '#15803d',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                              border: '1px solid #86efac',
+                            }}
+                          >
+                            {sk}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
+                          None matched
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: '8px',
+                      padding: '0.65rem 0.85rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: '#991b1b',
+                        marginBottom: '0.4rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <AlertCircle size={13} color="#dc2626" />
+                      <span>Missing Requirements ({evalMatch.missingSkills?.length || 0})</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                      {(evalMatch.missingSkills || []).length > 0 ? (
+                        evalMatch.missingSkills.map((sk, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              background: '#ffffff',
+                              color: '#b91c1c',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                              border: '1px solid #fca5a5',
+                            }}
+                          >
+                            {sk}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
+                          All required skills satisfied!
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* All Student Skills */}
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.35rem', fontWeight: 600 }}>
+                Candidate's Stated Skills:
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                 {evalStudent.skills && evalStudent.skills.length > 0 ? (
                   evalStudent.skills.map((sk, i) => (
@@ -1382,7 +2171,9 @@ const DriveApplicants = () => {
                     </span>
                   ))
                 ) : (
-                  <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>No technical skills specified by candidate.</span>
+                  <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                    No technical skills specified by candidate.
+                  </span>
                 )}
               </div>
             </div>

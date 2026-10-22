@@ -421,6 +421,7 @@ const bulkUpdateApplicationStatus = async (req, res, next) => {
     const foundIdMap = new Map();
     applications.forEach((app) => foundIdMap.set(app._id.toString(), app));
 
+    const TERMINAL_STATUSES = ['Selected', 'Rejected'];
     const updated = [];
     const skipped = [];
 
@@ -430,6 +431,22 @@ const bulkUpdateApplicationStatus = async (req, res, next) => {
         skipped.push({
           id,
           reason: 'Application not found or does not belong to the specified drive',
+        });
+        continue;
+      }
+
+      // V4.0 Phase 2 Step 4: Bulk Terminal-State Protection
+      // Applications in 'Selected' or 'Rejected' statuses represent finalized decisions
+      // and must be protected from accidental bulk overwrite.
+      if (TERMINAL_STATUSES.includes(app.status)) {
+        skipped.push({
+          id: app._id,
+          studentName: app.student?.name || 'Unknown',
+          rollNo: app.student?.rollNo || 'N/A',
+          currentStatus: app.status,
+          attemptedStatus: status,
+          reason: `Cannot bulk update application in terminal state '${app.status}'. Terminal statuses are protected to prevent accidental overwrites.`,
+          isTerminalProtected: true,
         });
         continue;
       }
@@ -516,11 +533,21 @@ const bulkUpdateApplicationStatus = async (req, res, next) => {
       });
     }
 
+    const terminalSkippedCount = skipped.filter((s) => s.isTerminalProtected).length;
+
+    let responseMessage = `Bulk update complete: ${updated.length} updated, ${skipped.length} skipped`;
+    if (updated.length === 0 && terminalSkippedCount > 0) {
+      responseMessage = `No applications updated. ${terminalSkippedCount} application${terminalSkippedCount > 1 ? 's were' : ' was'} skipped because terminal statuses ('Selected' or 'Rejected') cannot be modified in bulk.`;
+    } else if (terminalSkippedCount > 0) {
+      responseMessage = `Bulk update complete: ${updated.length} updated, ${skipped.length} skipped (${terminalSkippedCount} protected terminal status${terminalSkippedCount > 1 ? 'es' : ''})`;
+    }
+
     res.status(200).json({
       success: true,
-      message: `Bulk update complete: ${updated.length} updated, ${skipped.length} skipped`,
+      message: responseMessage,
       updatedCount: updated.length,
       skippedCount: skipped.length,
+      terminalSkippedCount,
       data: {
         updated,
         skipped,

@@ -47,7 +47,9 @@ async function request(endpoint, options = {}) {
 
     return data;
   } catch (error) {
-    console.error(`[API Error] ${options.method || 'GET'} ${endpoint}:`, error.message);
+    if (error.name !== 'AbortError') {
+      console.error(`[API Error] ${options.method || 'GET'} ${endpoint}:`, error.message);
+    }
     throw error;
   }
 }
@@ -161,11 +163,11 @@ export const api = {
         method: 'POST',
       }),
     getMyApplications: () => request('/applications/my-applications'),
-    getDriveApplicants: (driveId, params = {}) => {
-      return request(`/applications/drive/${driveId}${buildQuery(params)}`);
+    getDriveApplicants: (driveId, params = {}, options = {}) => {
+      return request(`/applications/drive/${driveId}${buildQuery(params)}`, options);
     },
-    getMatchScores: (driveId) =>
-      request(`/applications/drive/${driveId}/match-scores`),
+    getMatchScores: (driveId, options = {}) =>
+      request(`/applications/drive/${driveId}/match-scores`, options),
     updateStatus: (applicationId, statusData) =>
       request(`/applications/${applicationId}/status`, {
         method: 'PUT',
