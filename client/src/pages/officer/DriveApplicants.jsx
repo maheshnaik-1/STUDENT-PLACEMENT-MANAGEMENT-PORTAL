@@ -7,6 +7,12 @@ import StatusUpdateModal from '../../components/officer/StatusUpdateModal';
 import BulkStatusUpdateModal from '../../components/officer/BulkStatusUpdateModal';
 import Modal from '../../components/common/Modal';
 import CandidateComparisonModal from '../../components/officer/CandidateComparisonModal';
+import HolisticApplicantSummaryCard from '../../components/officer/HolisticApplicantSummaryCard';
+import {
+  generateApplicantSummary,
+  ADVISORY_DISCLAIMER,
+  ADVISORY_NOTE,
+} from '../../utils/applicantSummary';
 import {
   evaluateEligibility,
   sortApplicants,
@@ -77,6 +83,9 @@ export {
   partitionByTerminalStatus,
   calculateCompleteness,
   getCompletenessTier,
+  generateApplicantSummary,
+  ADVISORY_DISCLAIMER,
+  ADVISORY_NOTE,
 };
 
 const STATUS_FILTERS = [
@@ -1859,6 +1868,16 @@ const DriveApplicants = () => {
                 <span>Update Status / Feedback</span>
               </button>
             </div>
+
+            {/* Holistic Applicant Executive Assessment Card */}
+            <HolisticApplicantSummaryCard
+              student={evalStudent}
+              drive={drive}
+              eligibility={evalEligibility}
+              matchScore={evalMatch}
+              completeness={evalCompleteness}
+              completenessTier={evalCompletenessTier}
+            />
 
             {/* B. Drive Eligibility Snapshot */}
             {evalEligibility && (
