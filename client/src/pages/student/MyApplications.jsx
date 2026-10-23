@@ -21,6 +21,9 @@ import {
   Clock,
   CheckCircle2,
   Briefcase,
+  RotateCcw,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -39,8 +42,30 @@ const MyApplications = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedApp, setSelectedApp] = useState(null);
+  const [appToWithdraw, setAppToWithdraw] = useState(null);
+  const [withdrawing, setWithdrawing] = useState(false);
 
-  const { showError } = useNotification();
+  const { showSuccess, showError } = useNotification();
+
+  const handleConfirmWithdraw = async () => {
+    if (!appToWithdraw) return;
+    try {
+      setWithdrawing(true);
+      const res = await api.applications.withdraw(appToWithdraw._id);
+      if (res.success) {
+        showSuccess(res.message || 'Application withdrawn successfully');
+        setApplications((prev) => prev.filter((a) => a._id !== appToWithdraw._id));
+        if (selectedApp && selectedApp._id === appToWithdraw._id) {
+          setSelectedApp(null);
+        }
+        setAppToWithdraw(null);
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to withdraw application');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
 
   const fetchApplications = async () => {
     try {
@@ -374,7 +399,7 @@ const MyApplications = () => {
                       </td>
 
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
                           <button
                             type="button"
                             onClick={() => setSelectedApp(app)}
@@ -392,6 +417,43 @@ const MyApplications = () => {
                           >
                             <ExternalLink size={13} />
                           </Link>
+                          {app.status === 'Applied' ? (
+                            <button
+                              type="button"
+                              onClick={() => setAppToWithdraw(app)}
+                              className="btn btn-secondary btn-sm"
+                              title="Withdraw Application"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                color: '#dc2626',
+                                borderColor: '#fca5a5',
+                                background: '#fff',
+                              }}
+                            >
+                              <RotateCcw size={12} />
+                              <span>Withdraw</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              className="btn btn-secondary btn-sm"
+                              title="Cannot withdraw: Application is under active review or finalized"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                opacity: 0.5,
+                                cursor: 'not-allowed',
+                                color: '#94a3b8',
+                              }}
+                            >
+                              <RotateCcw size={12} />
+                              <span>Withdraw</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -612,25 +674,154 @@ const MyApplications = () => {
             {/* Modal Footer */}
             <div
               className="modal-footer"
+              style={{
+                margin: '1.25rem -1.5rem -1.5rem',
+                padding: '1rem 1.5rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+              }}
+            >
+              <div>
+                {selectedApp.status === 'Applied' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppToWithdraw(selectedApp);
+                    }}
+                    className="btn btn-sm"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      color: '#dc2626',
+                      borderColor: '#fca5a5',
+                      background: '#fef2f2',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    <span>Withdraw Application</span>
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedApp(null)}
+                  className="btn btn-secondary"
+                >
+                  Close
+                </button>
+                {selectedApp.drive?._id && (
+                  <Link
+                    to={`/student/drives/${selectedApp.drive._id}`}
+                    className="btn btn-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <span>Open Drive Posting</span>
+                    <ExternalLink size={14} />
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Application Withdrawal Confirmation Modal */}
+      <Modal
+        isOpen={!!appToWithdraw}
+        onClose={() => !withdrawing && setAppToWithdraw(null)}
+        title="Confirm Application Withdrawal"
+        maxWidth="500px"
+      >
+        {appToWithdraw && (
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                padding: '0.85rem 1rem',
+                marginBottom: '1.25rem',
+                color: '#991b1b',
+              }}
+            >
+              <AlertTriangle size={24} style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '0.875rem', lineHeight: 1.4 }}>
+                <strong>Are you sure you want to withdraw your application?</strong>
+                <div>This will cancel your candidacy for this placement drive.</div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700 }}>
+                Drive Information
+              </div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '0.2rem' }}>
+                {appToWithdraw.drive?.company?.name || 'Company'} — {appToWithdraw.drive?.title || 'Placement Drive'}
+              </div>
+              <div style={{ fontSize: '0.825rem', color: '#64748b', marginTop: '0.35rem' }}>
+                Applied on: {new Date(appToWithdraw.appliedAt).toLocaleDateString()}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 1.25rem 0' }}>
+              Notice: The Placement Office will be notified that your application was withdrawn. If the drive deadline has not passed and your profile meets eligibility criteria, you may re-apply before submissions close.
+            </p>
+
+            <div
+              className="modal-footer"
               style={{ margin: '1.25rem -1.5rem -1.5rem', padding: '1rem 1.5rem' }}
             >
               <button
                 type="button"
-                onClick={() => setSelectedApp(null)}
+                onClick={() => setAppToWithdraw(null)}
                 className="btn btn-secondary"
+                disabled={withdrawing}
               >
-                Close
+                Cancel
               </button>
-              {selectedApp.drive?._id && (
-                <Link
-                  to={`/student/drives/${selectedApp.drive._id}`}
-                  className="btn btn-primary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                >
-                  <span>Open Drive Posting</span>
-                  <ExternalLink size={14} />
-                </Link>
-              )}
+              <button
+                type="button"
+                onClick={handleConfirmWithdraw}
+                className="btn"
+                disabled={withdrawing}
+                style={{
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                {withdrawing ? (
+                  <>
+                    <Loader2 size={15} className="spinner" />
+                    <span>Withdrawing...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={15} />
+                    <span>Confirm Withdrawal</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}

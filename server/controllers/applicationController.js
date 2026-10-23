@@ -1509,6 +1509,136 @@ const getDriveApplicantMatchScores = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Withdraw/cancel an unreviewed application
+ * @route   DELETE /api/applications/:id/withdraw
+ * @access  Private (Student only)
+ */
+const withdrawApplication = async (req, res, next) => {
+  try {
+    const applicationId = req.params.id;
+    const studentId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid application ID format',
+      });
+    }
+
+    // 1. Fetch application details with populated drive/company for notifications
+    const existingApp = await Application.findById(applicationId).populate({
+      path: 'drive',
+      populate: { path: 'company', select: 'name' },
+    });
+
+    if (!existingApp) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found or already withdrawn',
+      });
+    }
+
+    // 2. Ownership check: Must belong to requesting student
+    if (existingApp.student.toString() !== studentId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only withdraw your own applications.',
+      });
+    }
+
+    // 3. Status check: Can only withdraw if status is exactly 'Applied'
+    if (existingApp.status !== 'Applied') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot withdraw application. Application has already progressed to '${existingApp.status}' stage.`,
+      });
+    }
+
+    // 4. Atomic conditional deletion: Ensures no race condition if officer just changed status
+    const deletedApp = await Application.findOneAndDelete({
+      _id: applicationId,
+      student: studentId,
+      status: 'Applied',
+    });
+
+    if (!deletedApp) {
+      // Re-check state to provide exact error if race occurred
+      const raceCheck = await Application.findById(applicationId);
+      if (raceCheck && raceCheck.status !== 'Applied') {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot withdraw application. Application was recently updated to '${raceCheck.status}' stage.`,
+        });
+      }
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found or already withdrawn',
+      });
+    }
+
+    // 5. Notification dispatch (wrapped in try/catch so notification issues never fail the withdrawal)
+    const companyName = existingApp.drive?.company?.name || 'Company';
+    const driveTitle = existingApp.drive?.title || 'Placement Drive';
+    const driveId = existingApp.drive?._id;
+
+    try {
+      // A. Student confirmation notification
+      await createNotification({
+        recipient: studentId,
+        role: 'student',
+        title: 'Application Withdrawn',
+        message: `Your application for ${companyName} - ${driveTitle} has been successfully withdrawn.`,
+        type: 'SYSTEM',
+        relatedEntity: driveId,
+        relatedEntityType: 'PlacementDrive',
+        link: '/student/applications',
+        metadata: {
+          driveId,
+          companyName,
+          jobTitle: driveTitle,
+        },
+      });
+
+      // B. Placement Officer notification
+      const student = await User.findById(studentId).select('name rollNo branch');
+      const studentLabel = student ? `${student.name} (${student.rollNo || student.branch})` : 'A student';
+      const officers = await User.find({ role: 'officer' }).select('_id');
+      for (const officer of officers) {
+        await createNotification({
+          recipient: officer._id,
+          role: 'officer',
+          title: 'Candidate Application Withdrawn',
+          message: `${studentLabel} has withdrawn their application for ${companyName} - ${driveTitle}.`,
+          type: 'SYSTEM',
+          relatedEntity: driveId,
+          relatedEntityType: 'PlacementDrive',
+          link: driveId ? `/officer/drives/${driveId}/applicants` : '/officer/dashboard',
+          metadata: {
+            driveId,
+            studentId,
+            companyName,
+            jobTitle: driveTitle,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Withdrawal Notification Warning]:', notifErr.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Application for ${companyName} - ${driveTitle} has been successfully withdrawn.`,
+      data: {
+        applicationId,
+        driveId,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   applyForDrive,
   getMyApplications,
@@ -1518,4 +1648,5 @@ module.exports = {
   bulkUpdateApplicationStatus,
   getPlacementStats,
   getOfficerAnalytics,
+  withdrawApplication,
 };

@@ -9,6 +9,7 @@ const {
   bulkUpdateApplicationStatus,
   getPlacementStats,
   getOfficerAnalytics,
+  withdrawApplication,
 } = require('../controllers/applicationController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -18,6 +19,7 @@ router.get('/stats', getPlacementStats);
 // Student routes
 router.post('/apply/:driveId', protect, authorize('student'), applyForDrive);
 router.get('/my-applications', protect, authorize('student'), getMyApplications);
+router.delete('/:id/withdraw', protect, authorize('student'), withdrawApplication);
 
 // Placement Officer routes
 router.get('/analytics', protect, authorize('officer'), getOfficerAnalytics);

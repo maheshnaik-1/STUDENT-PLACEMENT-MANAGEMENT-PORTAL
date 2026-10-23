@@ -162,6 +162,10 @@ export const api = {
       request(`/applications/apply/${driveId}`, {
         method: 'POST',
       }),
+    withdraw: (applicationId) =>
+      request(`/applications/${applicationId}/withdraw`, {
+        method: 'DELETE',
+      }),
     getMyApplications: () => request('/applications/my-applications'),
     getDriveApplicants: (driveId, params = {}, options = {}) => {
       return request(`/applications/drive/${driveId}${buildQuery(params)}`, options);
