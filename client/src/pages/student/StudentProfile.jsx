@@ -463,6 +463,23 @@ const StudentProfile = () => {
           certificateUrl: (c.certificateUrl || '').trim(),
         }));
 
+      // Normalize and deduplicate skills (comma-separated, case-insensitive deduplication)
+      const normalizedSkills =
+        typeof formData.skills === 'string'
+          ? (() => {
+              const seen = new Set();
+              const result = [];
+              formData.skills.split(',').forEach((s) => {
+                const clean = s.trim();
+                if (clean && !seen.has(clean.toLowerCase())) {
+                  seen.add(clean.toLowerCase());
+                  result.push(clean);
+                }
+              });
+              return result.join(', ');
+            })()
+          : formData.skills;
+
       const payload = {
         name: formData.name.trim(),
         branch: formData.branch,
@@ -470,7 +487,7 @@ const StudentProfile = () => {
         activeBacklogs: parseInt(formData.activeBacklogs, 10) || 0,
         passingYear: parseInt(formData.passingYear, 10) || 2026,
         phone: formData.phone.trim(),
-        skills: formData.skills,
+        skills: normalizedSkills,
         resumeUrl: formData.resumeUrl.trim(),
         academicDetails: {
           tenthPercentage:
@@ -942,26 +959,34 @@ const StudentProfile = () => {
             {/* Render Skill Badges Preview */}
             {formData.skills && (
               <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {formData.skills
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                  .map((skill, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        background: '#eff6ff',
-                        color: '#1d4ed8',
-                        padding: '0.25rem 0.65rem',
-                        borderRadius: '6px',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        border: '1px solid #bfdbfe',
-                      }}
-                    >
-                      {skill}
-                    </span>
-                  ))}
+                {(() => {
+                  const seen = new Set();
+                  return formData.skills
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter((s) => {
+                      if (!s) return false;
+                      const lower = s.toLowerCase();
+                      if (seen.has(lower)) return false;
+                      seen.add(lower);
+                      return true;
+                    });
+                })().map((skill, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      border: '1px solid #bfdbfe',
+                    }}
+                  >
+                    {skill}
+                  </span>
+                ))}
               </div>
             )}
           </div>

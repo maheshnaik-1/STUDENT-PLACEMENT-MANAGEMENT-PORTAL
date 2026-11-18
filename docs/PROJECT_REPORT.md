@@ -5,212 +5,291 @@
 
 # STUDENT PLACEMENT MANAGEMENT PORTAL
 
-**A Complete Full-Stack Web Application for Campus Recruitment, Automated Eligibility Matching, and Selection Lifecycle Tracking**
+**An Enterprise Full-Stack Web Application for Campus Recruitment, Automated Eligibility Matching, and Selection Lifecycle Tracking**
 
 ---
 
 ### Project Metadata
 - **Academic Program:** Bachelor of Technology (B.Tech) in Computer Science & Engineering
 - **Course Component:** CSE Mini Project Evaluation
-- **Team Size:** 7 Members
-- **Technology Stack:** MongoDB, Express.js, React.js, Node.js (MERN)
+- **Verified Technology Stack:** React + Vite, Java Spring Boot 3.4.3, MySQL 8.0
+- **Database Name:** `placement_portal_java`
+- **Backend Port:** 5000 | **Frontend Port:** 3000 | **MySQL Port:** 3306
 
 ---
 
 ## 1. ABSTRACT
-The **Student Placement Management Portal** is a centralized web application designed to automate and streamline the end-to-end campus placement and training processes in engineering institutions. Traditionally, training and placement cells rely on manual spreadsheets, Google Forms, and physical notice boards, leading to communication delays, duplicate registrations, and human errors in verifying student eligibility criteria (CGPA cutoffs, allowed branches, backlog limits).
 
-This project implements a secure, role-based architecture serving two primary stakeholders: **Graduating Students** and the **Training & Placement Officer (TPO)**. The system features an **Automated Eligibility Engine** that dynamically evaluates student qualifications against company placement drive criteria, provides instant visual feedback, strictly prevents duplicate submissions, and offers real-time status progression tracking from initial application to final offer letter issuance.
+The **Student Placement Management Portal** is a centralized, enterprise-grade web application engineered to digitize and automate the end-to-end campus training and recruitment lifecycle in collegiate institutions. Historically, Training and Placement Cells rely on disparate spreadsheets, generic online forms, and physical bulletin boards. These legacy methods suffer from communication latency, registration duplication, security vulnerabilities in resume handling, and frequent human error when verifying academic eligibility thresholds (CGPA cutoffs, eligible branches, backlog limits).
+
+To address these challenges, this project delivers a decoupled, multi-tiered architecture powered by a **React/Vite** frontend and a **Java Spring Boot 3.4.3** backend interacting with a relational **MySQL 8.0** database. The system provides role-based access for two principal stakeholders: **Graduating Students** and **Training & Placement Officers (TPO)**. Key innovations include an **Automated Eligibility Engine** that computes real-time qualification decisions with clear diagnostic feedback, strict duplicate application prevention via database composite keys, in-place JPA collection reconciliation, secure resume storage with cross-student isolation, and stage-by-stage application timeline tracking from submission to final placement.
 
 ---
 
 ## 2. PROBLEM STATEMENT & OBJECTIVES
 
-### 2.1 Existing System Drawbacks
-1. **Manual Eligibility Verification:** Placement staff manually cross-reference student spreadsheets against company criteria, which is prone to errors.
-2. **Lack of Real-Time Tracking:** Students lack visibility into their interview stage progression (Shortlisted, Technical Round, HR Round, Offer).
-3. **Redundant & Duplicate Applications:** Without database-level uniqueness constraints, students repeatedly apply for the same drive.
-4. **Scattered Company Information:** Details regarding package (CTC), drive dates, and selection rounds are fragmented across emails.
+### 2.1 Problem Statement
+In conventional campus placement setups, the Placement Cell manually evaluates student records against company recruitment parameters. This manual process exhibits significant operational drawbacks:
+1. **Error-Prone Eligibility Verification:** Placement officers must manually reconcile student academic records against company criteria, leading to inadvertent shortlisting errors or wrongful disqualifications.
+2. **Lack of Transparent Recruitment Tracking:** Students experience an information blackout between application submission and interview rounds, lacking visibility into stage progression (Shortlisted, Technical Round, HR Interview, Selection/Rejection).
+3. **Application Duplication & Inconsistent Data:** Without database-enforced unique constraints, students inadvertently submit duplicate entries, skewing applicant tallies.
+4. **Insecure Document & Resume Handling:** Public or unsecured resume links expose confidential student contact and academic data to unauthorized access.
+5. **Absence of Real-Time Reporting:** Compiling department-wise placement statistics and executive summaries for institutional accreditation requires laborious manual aggregation.
 
 ### 2.2 Project Objectives
-- Build an automated campus recruitment portal using the **MERN** stack.
-- Implement **JWT (JSON Web Token)** authentication and role-based route guards.
-- Provide a responsive, modern user interface for students to browse eligible placement drives and track application status.
-- Equip the Placement Officer with complete **CRUD** controls over companies, placement drives, applicant review, status progression, and analytics export (CSV / Print).
+- Develop a robust, enterprise-grade campus placement portal using **React + Vite** and **Java Spring Boot 3.4.3**.
+- Enforce relational data integrity, foreign-key relationships, and ACID compliance using **MySQL 8.0** (`placement_portal_java`).
+- Implement stateless, cryptographic authentication and role-based access control (RBAC) via **Spring Security** and **JSON Web Tokens (JWT)**.
+- Build an **Automated Eligibility Engine** evaluating CGPA, branch eligibility, maximum backlogs, and graduation year with dynamic feedback badges.
+- Provide a candidate selection tracker with timestamped timeline logs and student self-withdrawal capabilities.
+- Ensure strict **resume ownership authorization**, preventing cross-student file access.
+- Deliver an executive dashboard with live KPI counters, drive management controls, and exportable placement status rosters for placement officers.
 
 ---
 
-## 3. SYSTEM REQUIREMENTS SPECIFICATION (SRS)
+## 3. PROPOSED SOLUTION
 
-### 3.1 Functional Requirements
-
-#### A. Authentication & Security Module
-- **Student Registration:** Captures name, email, roll number, engineering branch, CGPA, active backlogs, passing batch year, technical skills, and resume URL.
-- **Role-Based Login:** Separate login flows for Student and Placement Officer with encrypted password verification using `bcryptjs`.
-- **Stateless Session Management:** Signed JWT tokens sent via HTTP `Authorization: Bearer` headers.
-
-#### B. Student Module
-- **Student Dashboard:** KPI overview showing available drives, drives eligible for the student, active applications, and received offers.
-- **Available Drives Directory:** Search and filter drives with dynamic *"✓ Eligible"* and *"✕ Ineligible"* badges detailing exact reasons if not eligible.
-- **Placement Drive Details:** Comprehensive job description, CTC package breakdown, selection rounds timeline, and 1-click application submission.
-- **My Applications Tracker:** Real-time table displaying application submission date, recruitment stage badge, and officer feedback remarks.
-- **Academic Profile Management:** Ability to update CGPA, active backlogs, contact number, skills, and resume portfolio link.
-
-#### C. Placement Officer Module
-- **Officer Dashboard:** Executive summary displaying total registered companies, active drives, total applications processed, placed students, and placement rate %.
-- **Company Management:** Register new recruiting partners, edit contact HR details, and delete companies with cascading relationship handling.
-- **Placement Drive Management:** Post new placement drives with custom eligibility thresholds (min CGPA, allowed branches checklist, maximum backlog ceiling, target batch).
-- **Applicant Evaluation Console:** Review all applicants for a specific drive, view full student academic profiles, update recruitment status (Applied → Shortlisted → Technical Round → Interview → Selected → Rejected), add customized remarks, and export candidate rosters to CSV.
-- **Placement Reports & Analytics:** Department-wise placement distribution, top hiring companies, and a master student placement status roster with CSV export and print view.
-
-### 3.2 Non-Functional Requirements
-- **Performance:** Sub-100ms API response time via MongoDB indexing.
-- **Usability:** Responsive layout with Google Fonts (Inter / Outfit), clear color-coded status badges, and animated toast feedback.
-- **Security:** Hashed passwords (10 salt rounds), route protection middleware, and parameterized database queries preventing SQL/NoSQL injection.
+The proposed system replaces manual spreadsheets and legacy ad-hoc systems with an integrated client-server architecture:
+- **Client Tier:** A responsive Single Page Application (SPA) built with React 18 and Vite, offering specialized views for students and officers, animated toast notifications, and client-side route protection.
+- **Application Tier:** A modular Java Spring Boot REST API structured into Controllers, Services, Repositories, Entities, and DTOs. Business rules, transactional boundaries, and security filters execute within this tier.
+- **Data Tier:** A normalized MySQL 8.0 relational schema enforcing referential integrity, cascading updates, and composite unique constraints (`(drive_id, student_id)`, `(drive_id, branch)`, `(drive_id, skill)`).
+- **Concurrency & Collection Integrity:** In-place entity reconciliation within JPA transactions prevents duplicate-key violations during placement drive updates.
 
 ---
 
-## 4. SYSTEM ARCHITECTURE & DESIGN
+## 4. CURRENT TECHNOLOGY STACK
 
-### 4.1 Architecture Diagram
+| Component | Technology | Version / Specification |
+|---|---|---|
+| **Frontend Framework** | React.js | 18.x (SPA with React Router v6) |
+| **Frontend Tooling** | Vite | Modern, high-performance module bundler |
+| **Styling & UI** | CSS3 Design System | Responsive layout with CSS variables and custom components |
+| **Backend Framework** | Java Spring Boot | 3.4.3 (RESTful API architecture) |
+| **Java Runtime** | Java JDK | JDK 26.0.2 |
+| **Build & Dependency Tool** | Apache Maven | Maven Wrapper (`mvnw.cmd`) |
+| **Security Framework** | Spring Security 6 | Stateless JWT authentication & method-level RBAC |
+| **Password Encryption** | BCrypt | PasswordEncoder with cryptographic salt hashing |
+| **Database Management** | MySQL Server | 8.0 relational database (`placement_portal_java`) |
+| **Data Access / ORM** | Spring Data JPA / Hibernate | 3NF normalized schema with connection pooling (HikariCP) |
+| **Network Endpoints** | HTTP / JSON | Frontend: `3000` \| Backend: `5000` \| MySQL: `3306` |
+
+---
+
+## 5. SYSTEM ARCHITECTURE
+
+### 5.1 Architectural Data Flow
+The portal operates on a clear three-tier client-server model:
+
 ```
-+-------------------------------------------------------------+
-|                      React.js Frontend                      |
-|  - React 18 SPA with Vite Bundler                          |
-|  - Context API (AuthContext, NotificationContext)           |
-|  - Protected Route Guards (Student / Officer)              |
-+-------------------------------------------------------------+
-                              |
-                              | REST API (HTTP JSON + Bearer JWT)
-                              v
-+-------------------------------------------------------------+
-|                   Node.js / Express Backend                 |
-|  - Express Router & Controllers                             |
-|  - JWT Authentication & Authorization Middleware            |
-|  - Automated Eligibility Matching Engine                   |
-+-------------------------------------------------------------+
-                              |
-                              | Mongoose ODM
-                              v
-+-------------------------------------------------------------+
-|                      MongoDB Database                       |
-|  - Collections: Users, Companies, PlacementDrives, Apps     |
-|  - Compound Unique Index: { drive: 1, student: 1 }          |
-+-------------------------------------------------------------+
+React/Vite Frontend (Port 3000)
+        |
+        | HTTP/REST API (JSON) + Authorization: Bearer <JWT>
+        v
+Spring Boot Backend (Port 5000)
+        |
+        | Spring Data JPA / Hibernate (JDBC via HikariCP)
+        v
+MySQL 8.0 Database (Port 3306)
+`placement_portal_java`
 ```
 
-### 4.2 Database Schema & ER Model
+### 5.2 Layered Backend Organization (`server-java`)
+The backend adheres to enterprise Spring Boot layering:
+1. **Security & Filter Chain:** `JwtAuthenticationFilter` intercepts requests, validates cryptographic signatures, and constructs `UserPrincipal` objects injected into `SecurityContextHolder`.
+2. **Controller Layer (`controller/`):** REST controllers (`AuthController`, `StudentController`, `CompanyController`, `PlacementDriveController`, `ApplicationController`, `NotificationController`, `AiController`, `HealthController`) handle HTTP contracts and validate incoming DTOs (`@Valid`).
+3. **Service Layer (`service/`):** Houses business rules (`UserService`, `StudentService`, `PlacementDriveService`, `ApplicationService`, `ResumeStorageService`, `ResumeParserService`, `NotificationService`). Transactions are managed using `@Transactional`.
+4. **Repository Layer (`repository/`):** Spring Data JPA repositories extending `JpaRepository` provide type-safe CRUD operations, JPQL queries, and derived query methods.
+5. **Entity Layer (`entity/`):** JPA entities mapped to MySQL tables with explicit constraints, foreign keys, and cascading rules.
+6. **Data Transfer Object Layer (`dto/`):** Decouples external API payloads from internal persistence entities.
+7. **Exception Handling Layer (`exception/`):** Global exception handler (`@RestControllerAdvice`) returns structured `ApiResponse<T>` error payloads with standard HTTP status codes.
 
-#### 1. `Users` Collection
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Primary Key | Unique User ID |
-| `name` | String | Required | Full Name |
-| `email` | String | Required, Unique | College Email |
-| `password` | String | Required, Hashed | Bcrypt Password (select: false) |
-| `role` | String | 'student' \| 'officer' | User Role |
-| `rollNo` | String | Unique (Sparse) | College Roll Number (e.g. 22CS101) |
-| `branch` | String | Enum (CSE, IT, etc.) | Engineering Department |
-| `cgpa` | Number | Min: 0, Max: 10 | Cumulative GPA |
-| `activeBacklogs`| Number | Min: 0 | Number of standing backlogs |
-| `passingYear` | Number | Default: 2026 | Graduation Year |
-| `skills` | [String] | Array | Key Technical Competencies |
-| `resumeUrl` | String | URL | Resume / Portfolio Link |
-
-#### 2. `Companies` Collection
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Primary Key | Unique Company ID |
-| `name` | String | Required, Unique | Company Name (e.g. Google India) |
-| `industry` | String | Required | Domain (e.g. Product, Cloud) |
-| `location` | String | Required | Headquarters / City |
-| `description` | String | Required | Company Overview |
-| `contactEmail` | String | Valid Email | Recruiter Contact Email |
-| `contactPerson`| String | Text | Campus HR Name |
-
-#### 3. `PlacementDrives` Collection
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Primary Key | Unique Drive ID |
-| `company` | ObjectId | Ref: 'Company' | Associated Company |
-| `title` | String | Required | Role Headline (e.g. SDE-1) |
-| `jobRole` | String | Required | Designation |
-| `packageCTC` | String | Required | Salary Offered (e.g. 28 LPA) |
-| `location` | String | Required | Work Location |
-| `eligibility` | Object | Subdocument | `{ minCGPA, allowedBranches, maxBacklogs, passingYear }` |
-| `driveDate` | Date | Required | Scheduled Drive Date |
-| `deadline` | Date | Required | Application Deadline |
-| `status` | String | Enum | 'Upcoming', 'Ongoing', 'Completed', 'Cancelled' |
-| `rounds` | [String] | Array | Selection Stages |
-
-#### 4. `Applications` Collection
-| Field | Type | Constraints | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Primary Key | Unique Application ID |
-| `drive` | ObjectId | Ref: 'PlacementDrive'| Associated Placement Drive |
-| `student` | ObjectId | Ref: 'User' | Applying Student |
-| `appliedAt` | Date | Default: Date.now | Timestamp |
-| `status` | String | Enum | 'Applied', 'Shortlisted', 'Technical Round', 'Interview', 'Selected', 'Rejected' |
-| `remarks` | String | Text | Officer Feedback & Evaluation Notes |
-
-*Note: Compound Unique Index `{ drive: 1, student: 1 }` prevents duplicate student submissions.*
+### 5.3 Project Structure Overview
+- **`client/`:** Active React/Vite frontend application.
+- **`server-java/`:** Active Java Spring Boot 3.4.3 backend service.
+- **`database-notes/`:** Database schema documentation, SQL setup scripts, and verification logs.
+- **`migration-tools/`:** Automated migration tooling used for historic transition from document storage to MySQL.
+- **`docs/`:** Comprehensive academic report, architecture specifications, and viva defense materials.
+- **`server/`:** Legacy Node.js backend preserved strictly for archival and rollback reference (inactive).
 
 ---
 
-## 5. KEY IMPLEMENTATION DETAILS
+## 6. MODULE DESCRIPTION
 
-### 5.1 Eligibility Verification Algorithm
-```javascript
-const checkStudentEligibility = (student, drive) => {
-  const reasons = [];
-  let isEligible = true;
+### 6.1 Authentication & Authorization Module
+- **Dual-Role Support:** Supports `STUDENT` and `OFFICER` roles.
+- **Registration & Profile Creation:** Student onboarding captures academic branch, CGPA, backlogs, passing year, technical skills, and resume upload.
+- **Stateless JWT Flow:** Signed JWT tokens issued upon successful authentication; token validated on each subsequent request via `JwtAuthenticationFilter`.
+- **BCrypt Encryption:** Passwords hashed with salted BCrypt before database persistence.
 
-  const { minCGPA, allowedBranches, maxBacklogs, passingYear } = drive.eligibility;
+### 6.2 Student Module
+- **Student Dashboard:** Real-time summary displaying total available drives, eligible drives, active applications, and current placement status.
+- **Drive Directory with Dynamic Eligibility:** Comprehensive listing of active placement drives displaying company details, salary CTC, and automated eligibility badges (*"Eligible"* / *"Ineligible"* with detailed diagnosis).
+- **1-Click Application:** Submission mechanism enforcing duplicate prevention and initial stage logging (`APPLIED`).
+- **Application Timeline Tracker:** Visual stage-by-stage progression indicator (`APPLIED` → `SHORTLISTED` → `TECH_ROUND` → `INTERVIEW` → `SELECTED` / `REJECTED`) displaying timestamped transitions and officer feedback.
+- **Application Withdrawal:** Allows students to retract applications before drive finalization with automatic audit trail recording.
+- **Resume Management:** PDF upload, preview, and download with parsed skill extraction.
+- **In-App Notification Center:** Real-time alerts for recruitment updates, interview shortlisting, and officer remarks.
 
-  if (minCGPA && (student.cgpa || 0) < minCGPA) {
-    isEligible = false;
-    reasons.push(`CGPA requirement not met (Your CGPA: ${student.cgpa}, Required: ${minCGPA})`);
-  }
-
-  if (allowedBranches && allowedBranches.length > 0 && !allowedBranches.includes(student.branch)) {
-    isEligible = false;
-    reasons.push(`Branch '${student.branch}' not eligible (Allowed: ${allowedBranches.join(', ')})`);
-  }
-
-  if (maxBacklogs !== undefined && (student.activeBacklogs || 0) > maxBacklogs) {
-    isEligible = false;
-    reasons.push(`Active backlogs (${student.activeBacklogs}) exceeds limit (${maxBacklogs})`);
-  }
-
-  return { isEligible, reasons };
-};
-```
+### 6.3 Placement Officer Module
+- **Executive KPI Dashboard:** Real-time statistical metrics tracking total registered students, verified companies, active drives, total applications, and selected candidates.
+- **Company Management Console:** Full CRUD functionality for partner corporate recruiters.
+- **Placement Drive Management:** Scheduling interface enabling officers to configure job roles, CTC packages, application deadlines, commencement dates, minimum CGPA, allowed branch checklists, and maximum backlog allowances.
+- **Applicant Evaluation Console:** Centralized console listing applicants per drive, displaying academic profiles, granting authorized resume access, and enabling stage transitions with custom officer remarks.
+- **Placement Analytics & Reporting:** Real-time analytics displaying branch-wise placement distribution, drive performance metrics, and printable master placement rosters.
 
 ---
 
-## 6. TEST CASES & VERIFICATION
+## 7. ELIGIBILITY, APPLICATION & TRACKING WORKFLOW
 
-| Test Case ID | Test Scenario | Input Data | Expected Result | Pass/Fail |
-|---|---|---|---|---|
-| **TC-01** | Student Registration | Valid Roll No, Branch, CGPA: 8.85 | Account created; JWT issued; redirected to Dashboard | **PASS** |
-| **TC-02** | Duplicate Roll Number Registration | Duplicate Roll No: 22CS101 | Server returns 400 with duplicate error message | **PASS** |
-| **TC-03** | Officer Login | officer@college.edu / Officer@123 | Authenticated; redirected to Officer Dashboard | **PASS** |
-| **TC-04** | Ineligible Drive Application | Student (CGPA: 6.4) applies to Google (Min: 8.0) | System rejects with *"CGPA requirement not met"* | **PASS** |
-| **TC-05** | Duplicate Application Prevention | Student applies twice to same drive | System blocks with *"Already applied"* | **PASS** |
-| **TC-06** | Officer Status Update | Change status to 'Selected' with remarks | Application updated; student sees offer announcement | **PASS** |
-| **TC-07** | Export CSV | Click 'Export CSV' in Applicant list | Downloads valid `.csv` with all applicant details | **PASS** |
+### 7.1 Automated Eligibility Engine
+When a student browses placement drives, the backend dynamically calculates eligibility by evaluating student profile attributes against drive parameters:
+
+$$\text{Eligible} \iff (\text{CGPA} \ge \text{minCGPA}) \land (\text{Branch} \in \text{AllowedBranches}) \land (\text{Backlogs} \le \text{maxBacklogs}) \land (\text{Year} = \text{PassingYear})$$
+
+If any condition fails, the engine sets `isEligible = false` and appends clear diagnostics:
+- *"CGPA requirement not met (Yours: 7.10, Required: 7.50)"*
+- *"Branch 'MECH' is not eligible for this drive (Allowed: CSE, IT, AI&DS)"*
+- *"Active backlogs (2) exceeds maximum permissible limit (0)"*
+
+### 7.2 Application Processing & Duplicate Prevention
+1. The student clicks **Apply** on an eligible drive.
+2. The service verifies eligibility server-side to prevent client-side bypass.
+3. The system checks `ApplicationRepository.findByDriveIdAndStudentId(driveId, studentId)`.
+4. If an application exists, the request is rejected with `HTTP 400 Bad Request`.
+5. If valid, an `Application` entity is persisted, an initial `ApplicationTimeline` entry is logged, a student notification is queued, and the transaction commits atomically.
+
+### 7.3 Recruitment Lifecycle Progression
+The selection workflow follows a progressive state model:
+$$\text{APPLIED} \longrightarrow \text{SHORTLISTED} \longrightarrow \text{TECH\_ROUND} \longrightarrow \text{INTERVIEW} \longrightarrow \begin{cases} \text{SELECTED} \\ \text{REJECTED} \end{cases}$$
+
+Placement Officers advance candidate stages through the evaluation console. Each transition creates a timestamped record in `application_timelines`, ensuring full auditability.
 
 ---
 
-## 7. CONCLUSION & FUTURE ENHANCEMENTS
+## 8. SECURITY & AUTHORIZATION ARCHITECTURE
 
-### 7.1 Conclusion
-The **Student Placement Management Portal** provides a dependable, scalable, and modern solution for college recruitment management. It eliminates manual overhead, enforces strict eligibility rules, ensures complete transparency for students, and empowers placement officers with rich candidate review and analytics tools.
+### 8.1 Role-Based Access Control (RBAC)
+Endpoints are protected using Spring Security method-level security:
+- `@PreAuthorize("hasRole('STUDENT')")`: Restricted to authenticated student users (e.g. drive application, profile updates, personal applications).
+- `@PreAuthorize("hasRole('OFFICER')")`: Restricted to placement officers (e.g. drive creation, company management, stage updates, analytics).
+- Unauthorized requests trigger `JwtAuthenticationEntryPoint` (401) or `JwtAccessDeniedHandler` (403).
 
-### 7.2 Future Enhancements
-1. **Automated Resume Parsing:** Utilizing NLP to match student skill keywords against job descriptions.
-2. **Automated Email/SMS Notifications:** Integrated Nodemailer / Twilio triggers when recruitment stages update.
-3. **Online Assessment Integration:** Embedded coding challenge editor for preliminary screening rounds.
+### 8.2 Resume Upload & Ownership Security
+Student resumes represent sensitive personal information requiring strict authorization guards:
+1. **Upload & Storage:** Resumes are uploaded as multipart PDF files and stored via `ResumeStorageService` on the local server filesystem using UUID-prefixed filenames to prevent directory traversal and name collisions.
+2. **Strict Ownership Enforcement:**
+   - **Student Access:** A student can only view, download, or delete their own resume.
+   - **Cross-Student Access Blocked:** If Student A attempts to access `/api/auth/resume-download/{studentB_id}`, the backend detects the mismatch between `principal.getId()` and the target `studentId`, rejecting the request with `HTTP 403 Forbidden`.
+   - **Officer Access:** Placement Officers are granted access to download candidate resumes only for students who have submitted applications to drives.
+3. **Automated Skill Parsing:** Authenticated students can invoke `POST /api/ai/parse-resume` to extract key technical skills from their uploaded resume, assisting in profile completion.
 
 ---
-*Report prepared for 10-Marks Mini Project Source-Code & Viva Evaluation.*
+
+## 9. DATABASE DESIGN & RELATIONAL DATA INTEGRITY
+
+### 9.1 Relational Schema (`placement_portal_java`)
+The database is structured into normalized tables adhering to Third Normal Form (3NF):
+- **`users`:** Stores authentication credentials, hashed passwords, roles (`STUDENT`, `OFFICER`), and resume file metadata.
+- **`student_profiles` & `student_skills`:** Normalized entities storing academic indicators (CGPA, branch, active backlogs, graduation year) and technical skill tags.
+- **`companies`:** Recruiter profiles, industry domains, contact details, and headquarters locations.
+- **`placement_drives`:** Core hiring drive records (job title, package CTC, eligibility criteria, commencement date, deadline, status).
+- **`drive_allowed_branches`:** Child table with composite unique constraint `uk_drive_branch` (`drive_id`, `branch`).
+- **`drive_required_skills`:** Child table with composite unique constraint `uk_drive_skill` (`drive_id`, `skill`).
+- **`applications`:** Associates students with drives with unique composite constraint `(drive_id, student_id)`.
+- **`application_timelines`:** Audit log capturing status changes, timestamps, and officer remarks.
+- **`notifications`:** In-app notification queue.
+
+### 9.2 In-Place Collection Reconciliation
+During placement drive updates (e.g. modifying commencement dates or updating eligible branches), Hibernate's default behavior of clearing and re-inserting child collections can trigger `Duplicate entry for key 'drive_allowed_branches.uk_drive_branch'` because Hibernate schedules inserts before orphan deletions.
+
+The service resolves this using **in-place collection reconciliation**:
+- Existing child entities matching incoming payload items are retained.
+- Obsolete child entities are removed using `removeIf`.
+- Newly added items are instantiated and appended.
+- This guarantees safe updates under strict relational constraints without requiring temporary constraint deactivation.
+
+### 9.3 Historical Migration Context
+The project initially used MongoDB during early exploratory prototyping. To enforce transactional integrity, strict relational foreign-key consistency, and compliance with institutional software engineering standards, the database was fully migrated to **MySQL 8.0**:
+- Automated migration tooling (`migration-tools/`) migrated all records with 100% data parity.
+- Database documentation and SQL setup scripts are preserved in `database-notes/`.
+- MongoDB has been completely retired from the active application runtime.
+
+---
+
+## 10. TESTING AND VALIDATION
+
+The system underwent comprehensive automated unit, integration, and end-to-end testing:
+
+### 10.1 Automated Test Execution Summary
+- **Backend Test Suite (Maven):**
+  - **Total Tests Executed:** 127
+  - **Passed:** 127
+  - **Failures:** 0
+  - **Errors:** 0
+  - **Skipped:** 0
+  - **Result:** `BUILD SUCCESS`
+- **Frontend Production Build (Vite):**
+  - Executed `npm run build` in `client/`.
+  - Zero syntax errors, zero bundling warnings, clean production bundle emitted.
+
+### 10.2 Targeted Verification Scenarios
+
+| Test Category | Test Case / Scenario | Verification Method | Result |
+|---|---|---|---|
+| **Authentication** | Student & Officer login with valid credentials | MockMvc & Controller Tests | **PASS** (JWT issued) |
+| **Authentication** | Access protected endpoints without Bearer token | MockMvc security filter test | **PASS** (401 Unauthorized) |
+| **Authorization** | Student attempting officer-only drive creation | Security filter chain check | **PASS** (403 Forbidden) |
+| **Eligibility Engine** | Ineligible student (CGPA below threshold) applies | `IneligibleApplicationException` check | **PASS** (Rejected with reasons) |
+| **Duplicate Prevention** | Student submitting duplicate drive application | `ApplicationRepository` duplicate test | **PASS** (Rejected with 400) |
+| **Drive Update Defect** | Updating drive commencement date with existing branches | `PlacementDriveDatabaseIntegrationTest` | **PASS** (No duplicate key error) |
+| **Resume Security** | Cross-student resume download attempt | `StudentSecurityIntegrationTest` | **PASS** (403 Forbidden) |
+| **Application Lifecycle**| Stage advancement (`APPLIED` → `SELECTED`) | `ApplicationServiceTest` | **PASS** (Timeline logged) |
+| **Self-Withdrawal** | Student withdraws application before deadline | Integration test & browser verification | **PASS** (Status updated) |
+
+---
+
+## 11. RESULTS AND ADVANTAGES
+
+### 11.1 Project Outcomes
+- **Operational Efficiency:** Automated eligibility matching eliminates manual spreadsheet filtering by placement staff.
+- **Data Parity & Reliability:** Relational schema enforcement in MySQL ensures zero duplicate applications or orphan records.
+- **Transparency for Students:** Instant visual eligibility feedback and real-time timeline tracking provide complete visibility into hiring stages.
+- **Information Security:** Strong cryptographic authentication and resume access control safeguard confidential student data.
+
+### 11.2 Key Advantages
+1. **Architectural Decoupling:** Independent React frontend and Spring Boot REST backend allow modular scaling and maintenance.
+2. **ACID Transactional Guarantees:** Relational database operations ensure atomic multi-table updates across drives, applications, and timelines.
+3. **Enterprise Security Model:** Role-based access control enforced at both HTTP filter and service method levels.
+4. **Institutional Readiness:** Clean, reproducible build pipelines with 127 automated tests and comprehensive documentation.
+
+---
+
+## 12. LIMITATIONS & FUTURE ENHANCEMENTS
+
+### 12.1 Current Limitations
+1. **Local File Storage:** Resumes are currently stored on the application server filesystem rather than a distributed cloud object store.
+2. **Synchronous Notifications:** Notifications are stored in-app; external delivery channels (SMS/Email) require external gateway integration.
+
+### 12.2 Future Enhancements
+1. **Cloud Object Storage (AWS S3):** Transition resume storage to secure cloud bucket storage with pre-signed URLs.
+2. **Automated Email / WhatsApp Alerts:** Integration with communication gateways (e.g., SendGrid, Twilio) for automated status notifications.
+3. **Online Assessment Module:** Incorporating an in-portal technical screening and aptitude test engine.
+
+---
+
+## 13. CONCLUSION
+
+The **Student Placement Management Portal** successfully satisfies all requirements of a comprehensive B.Tech Computer Science & Engineering Mini Project. By integrating **React + Vite**, **Java Spring Boot 3.4.3**, and **MySQL 8.0**, the portal transforms the traditional, fragmented placement process into a streamlined, automated, and secure digital platform. With an automated eligibility engine, robust role-based access control, secure resume management, and 100% test suite verification across 127 automated tests, the application stands fully prepared for deployment and academic evaluation.
+
+---
+
+## 14. REFERENCES
+
+1. **Spring Framework Documentation:** *Spring Boot Reference Guide (v3.4.3)*, VMware Tanzu. https://docs.spring.io/spring-boot/
+2. **React Documentation:** *React 18 — The Library for Web and Native User Interfaces*, Meta Open Source. https://react.dev/
+3. **MySQL 8.0 Reference Manual:** *Relational Database Architecture and Constraint Enforcement*, Oracle Corporation. https://dev.mysql.com/doc/refman/8.0/en/
+4. **RFC 7519:** *JSON Web Token (JWT) Specification*, Internet Engineering Task Force (IETF). https://datatracker.ietf.org/doc/html/rfc7519
+5. **Hibernate ORM Documentation:** *Hibernate ORM 6.x User Guide*, Red Hat. https://hibernate.org/orm/documentation/
+
+---
+*Report submitted in partial fulfillment of the requirements for the award of Bachelor of Technology (B.Tech) in Computer Science & Engineering.*

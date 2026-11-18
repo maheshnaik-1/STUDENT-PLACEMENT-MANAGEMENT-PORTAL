@@ -8,6 +8,11 @@ dist/
 client/dist/
 build/
 
+# Maven build outputs
+target/
+server-java/target/
+*.class
+
 # Environment variables & secrets
 .env
 .env.local
@@ -41,3 +46,5 @@ Thumbs.db
 # Uploaded Files
 server/uploads/
 uploads/
+storage/resumes/*
+!storage/resumes/.gitkeep

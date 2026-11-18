@@ -11,7 +11,7 @@
  * 7. Professional Links or Certifications (10%)
  *
  * Compatible with both flattened form state (StudentProfile.jsx) and
- * populated MongoDB User/Student documents (Officer Evaluation in DriveApplicants.jsx).
+ * populated Student User entities/DTOs (Officer Evaluation in DriveApplicants.jsx).
  */
 
 export const COMPLETENESS_WEIGHTS = {
@@ -174,11 +174,22 @@ export const calculateCompleteness = (
   }
 
   // 4. Technical Skills (15%)
-  const skillsList = Array.isArray(safeData.skills)
+  const rawSkills = Array.isArray(safeData.skills)
     ? safeData.skills
     : typeof safeData.skills === 'string'
     ? safeData.skills.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
+
+  const seenSkills = new Set();
+  const skillsList = rawSkills.filter((s) => {
+    if (typeof s !== 'string') return false;
+    const clean = s.trim();
+    if (!clean) return false;
+    const lower = clean.toLowerCase();
+    if (seenSkills.has(lower)) return false;
+    seenSkills.add(lower);
+    return true;
+  });
 
   if (skillsList.length > 0) {
     score += COMPLETENESS_WEIGHTS.SKILLS;

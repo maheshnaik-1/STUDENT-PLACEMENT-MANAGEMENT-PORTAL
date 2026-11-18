@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { api } from '../../services/api';
 import StatusBadge from '../../components/common/StatusBadge';
+import CompanyLogo from '../../components/common/CompanyLogo';
 import {
   Building2,
   MapPin,
@@ -155,36 +156,13 @@ const DriveDetails = () => {
           }}
         >
           <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-            {company.logoUrl ? (
-              <img
-                src={company.logoUrl}
-                alt={company.name}
-                style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '14px',
-                  objectFit: 'cover',
-                  border: '1px solid #e2e8f0',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '14px',
-                  background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 800,
-                  fontSize: '1.5rem',
-                }}
-              >
-                {company.name ? company.name.substring(0, 2).toUpperCase() : 'CO'}
-              </div>
-            )}
+            <CompanyLogo
+              src={company.logoUrl}
+              name={company.name}
+              size={64}
+              borderRadius={14}
+              fontSize="1.5rem"
+            />
 
             <div>
               <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a' }}>

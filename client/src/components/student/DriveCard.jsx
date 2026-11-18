@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import StatusBadge from '../common/StatusBadge';
+import CompanyLogo from '../common/CompanyLogo';
 import {
   Building2,
   MapPin,
@@ -53,36 +54,13 @@ const DriveCard = ({ drive, onApply, isApplying }) => {
           }}
         >
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            {company.logoUrl ? (
-              <img
-                src={company.logoUrl}
-                alt={company.name}
-                style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '10px',
-                  objectFit: 'cover',
-                  border: '1px solid #e2e8f0',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '10px',
-                  background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: '1.1rem',
-                }}
-              >
-                {company.name ? company.name.substring(0, 2).toUpperCase() : 'CO'}
-              </div>
-            )}
+            <CompanyLogo
+              src={company.logoUrl}
+              name={company.name}
+              size={46}
+              borderRadius={10}
+              fontSize="1.1rem"
+            />
             <div>
               <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
                 {drive.title}

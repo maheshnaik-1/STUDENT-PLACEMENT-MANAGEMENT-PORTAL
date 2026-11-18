@@ -24,18 +24,26 @@ const OfficerDashboard = () => {
 
   const [stats, setStats] = useState(null);
   const [drives, setDrives] = useState([]);
+  const [recentApplications, setRecentApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsRes, drivesRes] = await Promise.all([
+      const [statsRes, drivesRes, analyticsRes] = await Promise.all([
         api.applications.getStats(),
         api.drives.getAll(),
+        api.applications.getAnalytics().catch((err) => {
+          console.warn('Failed to load officer analytics for recent applications:', err);
+          return { success: false, data: null };
+        }),
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
       if (drivesRes.success) setDrives(drivesRes.data || []);
+      if (analyticsRes.success && analyticsRes.data?.recentApplications) {
+        setRecentApplications(analyticsRes.data.recentApplications);
+      }
     } catch (err) {
       showError(err.message || 'Failed to load officer dashboard data');
     } finally {
@@ -178,87 +186,188 @@ const OfficerDashboard = () => {
               </p>
             </div>
           ) : (
-            <div className="table-responsive">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Company</th>
-                    <th>Role Headline</th>
-                    <th>Package CTC</th>
-                    <th>Eligible Criteria</th>
-                    <th>Applicants</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drives.slice(0, 5).map((drive) => (
-                    <tr key={drive._id}>
-                      <td>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>
+            <>
+              {/* Desktop & Tablet Table View */}
+              <div className="table-responsive drives-table-desktop">
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '0.75rem 1rem' }}>Company & Role</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Package CTC</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Eligibility Criteria</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Applicants</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drives.slice(0, 5).map((drive) => (
+                      <tr key={drive._id || drive.id}>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>
+                            {drive.company?.name || 'Company'}
+                          </div>
+                          <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.875rem' }}>
+                            {drive.title}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            {drive.location}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span
+                            style={{
+                              background: '#ecfdf5',
+                              color: '#065f46',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px',
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {drive.packageCTC}
+                          </span>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: '#475569', maxWidth: '240px' }}>
+                          <div style={{ fontWeight: 600 }}>
+                            CGPA &ge; {drive.eligibility?.minCGPA || 0}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                            {drive.eligibility?.allowedBranches?.join(', ') || 'All Branches'}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span
+                            style={{
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '9999px',
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {drive.totalApplicants || 0} Students
+                          </span>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <StatusBadge status={drive.status} type="drive" />
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <Link
+                            to={`/officer/drives/${drive._id || drive.id}/applicants`}
+                            className="btn btn-primary btn-sm"
+                            style={{ whiteSpace: 'nowrap' }}
+                          >
+                            <Users size={14} />
+                            <span>Review Applicants</span>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card List View (< 768px) */}
+              <div className="drives-cards-mobile">
+                {drives.slice(0, 5).map((drive) => (
+                  <div
+                    key={drive._id || drive.id}
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px',
+                      padding: '1rem',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1rem' }}>
                           {drive.company?.name || 'Company'}
+                        </div>
+                        <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.9rem' }}>
+                          {drive.title}
                         </div>
                         <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
                           {drive.location}
                         </div>
-                      </td>
-
-                      <td style={{ fontWeight: 600, color: '#334155' }}>
-                        {drive.title}
-                      </td>
-
-                      <td>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+                        <StatusBadge status={drive.status} type="drive" />
                         <span
                           style={{
                             background: '#ecfdf5',
                             color: '#065f46',
-                            padding: '0.25rem 0.5rem',
+                            padding: '0.2rem 0.5rem',
                             borderRadius: '6px',
                             fontWeight: 700,
-                            fontSize: '0.85rem',
+                            fontSize: '0.8rem',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {drive.packageCTC}
                         </span>
-                      </td>
+                      </div>
+                    </div>
 
-                      <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        CGPA &ge; {drive.eligibility?.minCGPA || 0} • {drive.eligibility?.allowedBranches?.join(', ')}
-                      </td>
-
-                      <td>
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        borderRadius: '8px',
+                        padding: '0.65rem 0.75rem',
+                        fontSize: '0.8rem',
+                        color: '#475569',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        <span><strong>Eligibility:</strong> CGPA &ge; {drive.eligibility?.minCGPA || 0}</span>
                         <span
                           style={{
                             background: '#eff6ff',
                             color: '#1d4ed8',
-                            padding: '0.25rem 0.6rem',
+                            padding: '0.15rem 0.5rem',
                             borderRadius: '9999px',
                             fontWeight: 700,
-                            fontSize: '0.85rem',
+                            fontSize: '0.75rem',
                           }}
                         >
-                          {drive.totalApplicants || 0} Students
+                          {drive.totalApplicants || 0} Students Applied
                         </span>
-                      </td>
+                      </div>
+                      {drive.eligibility?.allowedBranches && drive.eligibility.allowedBranches.length > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.3, wordBreak: 'break-word' }}>
+                          Branches: {drive.eligibility.allowedBranches.join(', ')}
+                        </div>
+                      )}
+                    </div>
 
-                      <td>
-                        <StatusBadge status={drive.status} type="drive" />
-                      </td>
-
-                      <td>
-                        <Link
-                          to={`/officer/drives/${drive._id}/applicants`}
-                          className="btn btn-primary btn-sm"
-                        >
-                          <Users size={14} />
-                          <span>Review Applicants</span>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    <Link
+                      to={`/officer/drives/${drive._id || drive.id}/applicants`}
+                      className="btn btn-primary btn-sm"
+                      style={{ width: '100%', justifyContent: 'center' }}
+                    >
+                      <Users size={14} />
+                      <span>Review Applicants</span>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -339,11 +448,11 @@ const OfficerDashboard = () => {
             </h3>
           </div>
           <div className="card-body">
-            {stats?.recentApplications && stats.recentApplications.length > 0 ? (
+            {recentApplications && recentApplications.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {stats.recentApplications.map((app) => (
+                {recentApplications.map((app) => (
                   <div
-                    key={app._id}
+                    key={app._id || app.id}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',

@@ -1,5 +1,5 @@
 /**
- * Centralized API Service for communicating with Express Backend
+ * Centralized API Service for communicating with Spring Boot REST Backend
  */
 
 const BASE_URL = '/api';

@@ -1,66 +1,87 @@
 # STUDENT PLACEMENT MANAGEMENT PORTAL
 ## How to Start the Project
 
-Last verified: 19 October 2026
+Last verified: 5 November 2026
 
 Project Location:
 D:\Student Placement Management Portal
 
-### STEP 1: Check MongoDB
+### STEP 1: Verify MySQL 8.0 Database
 
-Open PowerShell and run:
+The Java Spring Boot backend connects to the MySQL 8.0 database (`placement_portal_java`).
+Ensure MySQL 8.0 is running on your machine:
 
-Get-Service MongoDB
+Open PowerShell and check the service status:
+
+Get-Service MySQL80
 
 If the status is Running, continue to Step 2.
 
 If the status is Stopped, open PowerShell as Administrator and run:
 
-Start-Service MongoDB
+Start-Service MySQL80
 
-### STEP 2: Start the Backend
+(Or ensure your MySQL 8.0 server instance is active on port 3306).
 
-Open Terminal 1 in VS Code or Antigravity and run:
+### STEP 2: Start the Java Spring Boot Backend
 
-cd "D:\Student Placement Management Portal\server"
-npm start
+Open Terminal 1 in VS Code or Antigravity and navigate to the backend directory:
+
+cd "D:\Student Placement Management Portal\server-java"
+
+Configure the required environment variables in your terminal session before launching:
+
+$env:JWT_SECRET = "<your_jwt_secret>"
+$env:PLACEMENT_APP_PASSWORD = "<your_mysql_password>"
+
+(Note: Do not hardcode or commit secret values. Replace the placeholders with your actual local configuration.)
+
+Start the Spring Boot backend:
+
+.\mvnw.cmd spring-boot:run
 
 Keep this terminal open.
 
 Backend Port: 5000
 
-If the error EADDRINUSE appears, another process is already using port 5000. Check whether the existing backend is running before starting another one.
+Port Collision Tip:
+If an error appears indicating that port 5000 is already in use (e.g. Address already in use: bind), check whether the Spring Boot backend is already running in another terminal or background process before attempting to start another one.
 
-### STEP 3: Start the Frontend
+### STEP 3: Start the React Frontend
 
-Open Terminal 2 in VS Code or Antigravity and run:
+Open Terminal 2 in VS Code or Antigravity and navigate to the client directory:
 
 cd "D:\Student Placement Management Portal\client"
 npm run dev
 
 Keep this terminal open.
 
+Frontend Port: 3000
 Frontend URL:
 http://localhost:3000
 
 ### STEP 4: Open the Application
 
-Open your browser and visit:
+Open your web browser and visit:
 
 http://localhost:3000/login
 
-Log in using your existing account.
+Log in using your existing credentials.
 
 ### IMPORTANT NOTES
 
-1. MongoDB stores the project's database locally.
-2. Keep both backend and frontend terminals open while using the application.
-3. Closing the browser does not necessarily stop the servers.
-4. After restarting the computer, check MongoDB and start the backend and frontend again.
-5. Do not delete the database, reset the database, or run seed scripts just to start the project.
-6. Do not terminate an existing process on port 5000 without checking what it is first.
+1. Database: The application strictly uses MySQL 8.0 (`placement_portal_java`).
+2. Do NOT start MongoDB. MongoDB is not used by the current architecture.
+3. Do NOT run the legacy Node.js backend (`server/`). The active production backend is Java Spring Boot (`server-java/`).
+4. Do NOT delete, drop, reset, or recreate the database.
+5. Do NOT run seed scripts just to start the project. Existing student profiles, placement drives, and application records are preserved in MySQL.
+6. Keep both backend (Terminal 1) and frontend (Terminal 2) terminals open while using the application.
+7. Closing the browser does not stop the backend or frontend servers.
+8. Do not terminate an existing process on port 5000 without verifying whether it is the active Spring Boot backend.
+9. Ensure that both `JWT_SECRET` and `PLACEMENT_APP_PASSWORD` environment variables are properly set in Terminal 1 before executing `.\mvnw.cmd spring-boot:run`.
+10. Resume Storage: Uploaded resumes are stored in the decoupled `storage/resumes` directory (configurable via `RESUME_STORAGE_PATH`). Existing legacy resumes are automatically synchronized.
 
 Project: Student Placement Management Portal
-Frontend: React + Vite
-Backend: Node.js + Express
-Database: MongoDB
+Frontend: React + Vite (Port 3000)
+Backend: Java Spring Boot (Port 5000)
+Database: MySQL 8.0 (Database: placement_portal_java, Port 3306)

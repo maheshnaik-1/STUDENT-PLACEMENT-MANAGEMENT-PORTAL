@@ -23,7 +23,7 @@ import {
 /**
  * VisualRecruitmentFunnel
  * Premium, accessible recruitment pipeline and CTC tier visualization.
- * Derived strictly from real MongoDB placement records without hypothetical approximations.
+ * Derived strictly from real MySQL placement records without hypothetical approximations.
  */
 const VisualRecruitmentFunnel = ({
   funnelData,
@@ -44,8 +44,11 @@ const VisualRecruitmentFunnel = ({
     overallConversionRate: 0,
   };
 
-  const totalApplications = pipeline.totalApplications || 0;
-  const isEmpty = totalApplications === 0;
+  const totalApplications =
+    pipeline.totalApplications ?? (stages[0]?.count || 0);
+  const isEmpty =
+    totalApplications === 0 &&
+    (stages.length === 0 || stages[0]?.count === 0);
 
   // Handle empty state gracefully
   if (isEmpty) {

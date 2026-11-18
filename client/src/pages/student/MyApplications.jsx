@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useNotification } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import CompanyLogo from '../../components/common/CompanyLogo';
 import Modal from '../../components/common/Modal';
 import ApplicationTimeline from '../../components/student/ApplicationTimeline';
 import {
@@ -306,36 +307,13 @@ const MyApplications = () => {
                     >
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {company.logoUrl ? (
-                            <img
-                              src={company.logoUrl}
-                              alt={company.name}
-                              style={{
-                                width: '38px',
-                                height: '38px',
-                                borderRadius: '8px',
-                                objectFit: 'cover',
-                                border: '1px solid #e2e8f0',
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: '38px',
-                                height: '38px',
-                                borderRadius: '8px',
-                                background: '#2563eb',
-                                color: '#fff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 700,
-                                fontSize: '0.9rem',
-                              }}
-                            >
-                              {company.name ? company.name.substring(0, 2).toUpperCase() : 'CO'}
-                            </div>
-                          )}
+                          <CompanyLogo
+                            src={company.logoUrl}
+                            name={company.name}
+                            size={38}
+                            borderRadius={8}
+                            fontSize="0.9rem"
+                          />
                           <div>
                             <div style={{ fontWeight: 700, color: '#1e293b' }}>
                               {company.name || 'Company'}
@@ -485,38 +463,13 @@ const MyApplications = () => {
                 marginBottom: '1.25rem',
               }}
             >
-              {selectedApp.drive?.company?.logoUrl ? (
-                <img
-                  src={selectedApp.drive.company.logoUrl}
-                  alt={selectedApp.drive.company.name}
-                  style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '12px',
-                    objectFit: 'cover',
-                    border: '1px solid #e2e8f0',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '1.3rem',
-                  }}
-                >
-                  {selectedApp.drive?.company?.name
-                    ? selectedApp.drive.company.name.substring(0, 2).toUpperCase()
-                    : 'CO'}
-                </div>
-              )}
+              <CompanyLogo
+                src={selectedApp.drive?.company?.logoUrl}
+                name={selectedApp.drive?.company?.name}
+                size={52}
+                borderRadius={12}
+                fontSize="1.3rem"
+              />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>
                   {selectedApp.drive?.company?.name || 'Recruiting Partner'}

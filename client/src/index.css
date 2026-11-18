@@ -1071,3 +1071,26 @@ a:hover {
 .notif-view-link:hover {
   text-decoration: underline;
 }
+
+/* Responsive Dashboard Drives Table & Mobile Cards */
+.drives-table-desktop {
+  display: block;
+}
+
+.drives-cards-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .drives-table-desktop {
+    display: none;
+  }
+
+  .drives-cards-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding: 1rem;
+  }
+}
+

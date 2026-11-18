@@ -1,0 +1,17 @@
+{
+  "name": "placement-portal-migration-tools",
+  "version": "1.0.0",
+  "description": "Standalone, repeatable MongoDB-to-MySQL data migration runner for Student Placement Management Portal",
+  "main": "migrate.js",
+  "private": true,
+  "scripts": {
+    "dry-run": "node migrate.js --dry-run",
+    "verify-only": "node migrate.js --verify-only",
+    "execute": "node migrate.js --execute",
+    "test": "node test_safety_check.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.12.0"
+  }
+}

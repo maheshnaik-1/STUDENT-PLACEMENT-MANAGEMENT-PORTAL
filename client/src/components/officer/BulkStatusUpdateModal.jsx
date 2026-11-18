@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Modal from '../common/Modal';
-import { Users, Layers, AlertCircle, AlertTriangle, Edit3, Loader2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Edit3, Loader2 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
   { value: 'Applied', label: 'Applied (Initial Submission)' },

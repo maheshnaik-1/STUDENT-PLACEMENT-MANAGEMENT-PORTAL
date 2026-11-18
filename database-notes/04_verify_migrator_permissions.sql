@@ -1,0 +1,1 @@
+SHOW GRANTS FOR 'placement_migrator'@'localhost';

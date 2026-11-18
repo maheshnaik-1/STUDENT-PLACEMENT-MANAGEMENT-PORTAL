@@ -1,25 +1,23 @@
 {
   "name": "student-placement-management-portal",
   "version": "1.0.0",
-  "description": "College Mini Project - Student Placement Management Portal (MERN Stack)",
-  "main": "server/server.js",
+  "description": "Student Placement Management Portal (React + Spring Boot + MySQL)",
   "scripts": {
-    "install-all": "npm install && npm install --prefix server && npm install --prefix client",
-    "server": "npm start --prefix server",
     "client": "npm run dev --prefix client",
-    "seed": "npm run seed --prefix server",
-    "dev": "concurrently \"npm run server\" \"npm run client\""
+    "build:client": "npm run build --prefix client",
+    "test:client": "npm run test --prefix client",
+    "server:java": "cd server-java && .\\mvnw.cmd spring-boot:run",
+    "test:java": "cd server-java && .\\mvnw.cmd test",
+    "legacy:server": "npm start --prefix server",
+    "legacy:seed": "npm run seed --prefix server"
   },
   "keywords": [
     "placement-portal",
-    "mern",
     "react",
-    "nodejs",
-    "express",
-    "mongodb",
-    "college-project"
+    "springboot",
+    "java",
+    "mysql"
   ],
-  "author": "B.Tech CSE Group Project",
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^9.1.2"

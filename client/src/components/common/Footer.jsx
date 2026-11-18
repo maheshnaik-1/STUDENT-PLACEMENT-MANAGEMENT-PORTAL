@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraduationCap, Heart } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 
 const Footer = () => {
   return (

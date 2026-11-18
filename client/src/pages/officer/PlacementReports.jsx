@@ -61,7 +61,7 @@ const PlacementReports = () => {
       setLoading(true);
       const [analyticsRes, studentsRes] = await Promise.all([
         api.applications.getAnalytics({
-          driveId: selectedDrive,
+          driveId: selectedDrive !== 'ALL' ? selectedDrive : undefined,
           branch: selectedBranch,
           status: selectedStatus,
           search: search.trim(),
@@ -983,13 +983,13 @@ const PlacementReports = () => {
                           >
                             <div>
                               <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.875rem' }}>
-                                {app.studentName}{' '}
+                                {app.studentName || app.student?.name || 'Student'}{' '}
                                 <span style={{ color: '#64748b', fontWeight: 500, fontSize: '0.8rem' }}>
-                                  ({app.rollNo} • {app.branch})
+                                  ({app.rollNo || app.student?.rollNo || 'N/A'} • {app.branch || app.student?.branch || 'N/A'})
                                 </span>
                               </div>
                               <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
-                                {app.companyName} • {new Date(app.appliedAt).toLocaleDateString()}
+                                {app.companyName || app.drive?.company?.name || 'Company'} • {new Date(app.appliedAt).toLocaleDateString()}
                               </div>
                             </div>
                             <StatusBadge status={app.status} />
