@@ -20,11 +20,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const mongoose = require(path.join(__dirname, '../../server/node_modules/mongoose'));
-const jwt = require(path.join(__dirname, '../../server/node_modules/jsonwebtoken'));
+const mongoose = require(path.join(__dirname, '../../../server/node_modules/mongoose'));
+const jwt = require(path.join(__dirname, '../../../server/node_modules/jsonwebtoken'));
 
-require(path.join(__dirname, '../../server/node_modules/dotenv')).config({
-  path: path.join(__dirname, '../../server/.env'),
+require(path.join(__dirname, '../../../server/node_modules/dotenv')).config({
+  path: path.join(__dirname, '../../../server/.env'),
 });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -329,7 +329,7 @@ async function run() {
     }
     console.log(`   - Verified dedicated test port ${TEST_BACKEND_PORT} is free and ready.`);
 
-    const serverDir = path.resolve(__dirname, '../../server');
+    const serverDir = path.resolve(__dirname, '../../../server');
     const serverScript = path.resolve(serverDir, 'server.js');
 
     testBackendProcess = spawn(

@@ -9,12 +9,12 @@
 
 const http = require('http');
 const path = require('path');
-const mongoose = require(path.join(__dirname, '../../server/node_modules/mongoose'));
-const jwt = require(path.join(__dirname, '../../server/node_modules/jsonwebtoken'));
+const mongoose = require(path.join(__dirname, '../../../server/node_modules/mongoose'));
+const jwt = require(path.join(__dirname, '../../../server/node_modules/jsonwebtoken'));
 
 // Load env for JWT_SECRET
-require(path.join(__dirname, '../../server/node_modules/dotenv')).config({
-  path: path.join(__dirname, '../../server/.env'),
+require(path.join(__dirname, '../../../server/node_modules/dotenv')).config({
+  path: path.join(__dirname, '../../../server/.env'),
 });
 
 async function postRequest(url, headers = {}, body = {}) {
