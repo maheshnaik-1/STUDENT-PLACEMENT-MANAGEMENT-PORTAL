@@ -1,53 +1,50 @@
-# Node dependencies
+# Dependencies
 node_modules/
 client/node_modules/
 server/node_modules/
-migration-tools/node_modules/
 
-# Frontend build output
-client/dist/
+# Production Build outputs
 dist/
+client/dist/
 build/
 
-# Java / Maven
+# Maven build outputs
+target/
 server-java/target/
 *.class
 
-# Database
-data/
-backend/data/
-*.db
-*.mv.db
-*.trace.db
-
-# Environment / secrets
+# Environment variables & secrets
 .env
-.env.*
-!.env.example
+.env.local
+.env.*.local
 server/.env
-
-# IDE
-.idea/
-.vscode/
-*.iml
-
-# OS
-.DS_Store
-Thumbs.db
+client/.env
 
 # Logs
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# Temporary files
-tmp/
-temp/
+# Editor & IDE directories
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# Test artifacts
-coverage/
+# OS generated files
+.DS_Store
+Thumbs.db
 
-# Uploaded / generated files
+# Temporary directories
+.temp/
+.tmp/
+
+# Uploaded Files
 server/uploads/
-storage/resumes/
+uploads/
+storage/resumes/*
+!storage/resumes/.gitkeep
